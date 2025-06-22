@@ -1,15 +1,15 @@
+# src/fuzzylts/controllers/fuzzy.py
+
 """
-controllers.fuzzy – controlador difuso con CSV integrado
-─────────────────────────────────────────────────────────
-• Aplica las mismas reglas y membresías que tu script original.
-• Calcula duración verde cada vez que una fase 0/2 entra en amarillo.
-• Registra:
-      datos_colas_fuzzy.csv
-      datos_semaforos_fuzzy.csv
-  en la carpeta del experimento (FUZZYLTS_RUN_DIR).
+controllers.fuzzy – Mamdani fuzzy-controller with integrated CSV logging
+─────────────────────────────────────────────────────────────────────────
+Applies fuzzy inference to compute adaptive green durations. Logs per-lane
+queue lengths and green-phase assignments into CSVs under the run directory.
 """
+
 from __future__ import annotations
-import csv, os, statistics
+import csv
+import os
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -17,89 +17,106 @@ import numpy as np
 import traci
 from skfuzzy import control as ctrl
 
-from fuzzylts.utils.fuzzy_system import generar_membresias_fuzzy, crear_reglas_desde_lista
+from fuzzylts.utils.fuzzy_system import generate_memberships, build_rules
 from fuzzylts.utils.log import get_logger
-from . import fuzzy_defs as defs                     # fases_lanes_dict, funciones, reglas_definidas
+from . import fuzzy_defs as defs  # membership definitions, rule base, phase mapping
 
 log = get_logger(__name__)
 
-# ── construir sistema difuso una única vez ────────────────────────────────
-_vars = generar_membresias_fuzzy(defs.funciones)
-ctrl_system = ctrl.ControlSystem(crear_reglas_desde_lista(
-    defs.reglas_definidas, _vars["vehiculos"], _vars["llegada"], _vars["verde"]
-))
-SIM = ctrl.ControlSystemSimulation(ctrl_system)
-log.info("Fuzzy controller ready with %d rules", len(defs.reglas_definidas))
+# ── Build fuzzy system once ─────────────────────────────────────────────
+_vars = generate_memberships(defs.funciones)
+_rules = build_rules(defs.reglas_definidas,
+                                  _vars["vehiculos"],
+                                  _vars["llegada"],
+                                  _vars["verde"])
+_fuzzy_system = ctrl.ControlSystem(_rules)
+_simulator = ctrl.ControlSystemSimulation(_fuzzy_system)
+log.info("Fuzzy controller initialized with %d rules", len(_rules))
 
-# ── CSV paths ────────────────────────────────────────────────────────────
-RUN_DIR = Path(os.environ.get("FUZZYLTS_RUN_DIR", "."))
-CSV_COLAS     = RUN_DIR / "datos_colas_fuzzy.csv"
-CSV_SEMAFOROS = RUN_DIR / "datos_semaforos_fuzzy.csv"
-def _init_csv(path: Path, header: str) -> None:
+# ── CSV file setup ──────────────────────────────────────────────────────
+RUN_DIR = Path(os.getenv("FUZZYLTS_RUN_DIR", "."))
+CSV_QUEUE = RUN_DIR / "data_queu_fuzzy.csv"
+CSV_PHASE = RUN_DIR / "data_tls_fuzzy.csv"
+
+def _ensure_csv(path: Path, header: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         path.write_text(header + "\n", encoding="utf-8")
 
-_init_csv(CSV_COLAS,     "tiempo,lane_id,vehiculos_en_cola")
-_init_csv(CSV_SEMAFOROS, "tiempo,semaforo_id,num_vehiculos,fase,duracion_verde")
+_ensure_csv(CSV_QUEUE, "time,lane_id,queue_length")
+_ensure_csv(CSV_PHASE, "time,traffic_light_id,phase,green_duration,vehicles_in_phase")
 
-# ── estado lane → (t_prev, count_prev) para tasa de llegada ───────────────
+# ── Lane state for arrival-rate estimation ─────────────────────────────
 _lane_state: Dict[str, Tuple[float, int]] = {}
 
-def _cola_y_tasa(lane: str) -> Tuple[int, float]:
-    """Devuelve (vehículos en cola, tasa llegada) y actualiza el estado."""
-    now   = traci.simulation.getTime()
+def _queue_and_rate(lane: str) -> Tuple[int, float]:
+    """
+    Return (queue_length, arrival_rate) and update internal state.
+    Arrival rate = delta(count) / delta(time).
+    """
+    now = traci.simulation.getTime()
     count = traci.lane.getLastStepVehicleNumber(lane)
-    t_prev, c_prev = _lane_state.get(lane, (now, count))
-    tasa = (count - c_prev) / max(now - t_prev, 1e-3)
+    prev_time, prev_count = _lane_state.get(lane, (now, count))
+    rate = (count - prev_count) / max(now - prev_time, 1e-3)
     _lane_state[lane] = (now, count)
-    return count, max(tasa, 0.0)
+    return count, max(rate, 0.0)
 
+# ── Logging helpers ─────────────────────────────────────────────────────
+def _log_queue(now: float, lanes: List[str]) -> None:
+    with CSV_QUEUE.open("a", newline="") as f:
+        writer = csv.writer(f)
+        for lane in lanes:
+            writer.writerow([now, lane, traci.lane.getLastStepVehicleNumber(lane)])
 
-# ── helpers CSV ────────────────────────────────────────────────────────────
-def _log_colas(t: float, lane_ids: List[str]) -> int:
-    total = 0
-    with CSV_COLAS.open("a", newline="") as f:
-        w = csv.writer(f)
-        for lane in lane_ids:
-            cnt = traci.lane.getLastStepVehicleNumber(lane)
-            w.writerow([t, lane, cnt])
-            total += cnt
-    return total
+def _log_phase(now: float, tls_id: str, phase: int,
+               green_dur: int, total_vehicles: int) -> None:
+    with CSV_PHASE.open("a", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([now, tls_id, phase, green_dur, total_vehicles])
 
-def _log_semaforo(t: float, tls: str, fase: int, verde: int, vehs: int) -> None:
-    with CSV_SEMAFOROS.open("a", newline="") as f:
-        csv.writer(f).writerow([t, tls, vehs, fase, verde])
-
-# ── núcleo difuso ──────────────────────────────────────────────────────────
-def _inferir_verde(veh: int, tasa: float) -> int:
-    if veh <= 3:
+# ── Fuzzy inference core ────────────────────────────────────────────────
+def _compute_green(vehicles: int, rate: float) -> int:
+    if vehicles <= 3:
+        # minimum green bound
         return int(defs.funciones["verde"]["lmin"])
-    SIM.input["vehiculos"] = veh
-    SIM.input["llegada"]   = tasa
-    SIM.compute()
-    return int(SIM.output["verde"])
+    _sim = _simulator
+    _sim.input["vehiculos"] = vehicles
+    _sim.input["llegada"] = rate
+    _sim.compute()
+    return int(_sim.output["verde"])
 
-# ── API principal ─────────────────────────────────────────────────────────
+# ── Public API ──────────────────────────────────────────────────────────
+
 def get_phase_duration(tls_id: str) -> int:
-    fase = traci.trafficlight.getPhase(tls_id)
-    if fase not in (0, 2):                           # amarillo o rojo
-        return 0                                     # no cambiamos
+    """
+    Called each simulation step to record data and compute new green time
+    when a green phase begins (phases 0 or 2). Returns 0 when no change.
+    """
+    phase = traci.trafficlight.getPhase(tls_id)
+    # Only process green phases
+    if phase not in (0, 2):
+        return 0
 
-    lanes = defs.fases_lanes_dict[tls_id][fase]
-    vehs, tasas = 0, []
+    # Gather lane metrics
+    lanes = defs.fases_lanes_dict[tls_id][phase]
+    total_vehicles = 0
+    rates: List[float] = []
     for lane in lanes:
-        cnt, rate = _cola_y_tasa(lane)
-        vehs += cnt
-        if rate > 0:
-            tasas.append(rate)
+        q, r = _queue_and_rate(lane)
+        total_vehicles += q
+        if r > 0:
+            rates.append(r)
+    avg_rate = float(np.mean(rates)) if rates else 0.0
 
-    tasa_avg = float(np.mean(tasas)) if tasas else 0.0
-    verde    = _inferir_verde(vehs, tasa_avg)
+    # Compute green duration
+    green_dur = _compute_green(total_vehicles, avg_rate)
 
     now = traci.simulation.getTime()
-    _log_colas(now, lanes)
-    _log_semaforo(now, tls_id, fase, verde, vehs)
-    log.debug("Fuzzy %s f%d → veh=%d tasa=%.3f → verde=%ds",
-              tls_id, fase, vehs, tasa_avg, verde)
-    return verde
+    _log_queue(now, lanes)
+    _log_phase(now, tls_id, phase, green_dur, total_vehicles)
+
+    log.debug(
+        "Fuzzy %s phase %d → vehicles=%d, rate=%.3f → green=%ds",
+        tls_id, phase, total_vehicles, avg_rate, green_dur,
+    )
+    return green_dur
