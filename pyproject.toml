@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fuzzylts"
+version = "0.1.0"
+description = "Traffic-light controllers for SUMO (static, actuated, fuzzy)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "scikit-fuzzy",
+    "pandas",
+    # añade aquí traci si lo instalas vía pip (sumolib-traci)
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }        # ⬅️ IMPORTANTE
+packages = ["fuzzylts"]             # setuptools descubre subpaquetes
