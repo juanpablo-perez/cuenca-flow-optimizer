@@ -1,12 +1,16 @@
-"""Wrapper único para lanzar **una** simulación SUMO + TraCI."""
-from __future__ import annotations
+# src/fuzzylts/sim/runner.py
 
+"""
+SUMO Runner – Single simulation wrapper using TraCI
+
+Provides a uniform interface to run SUMO with different traffic-light controllers
+(static, actuated, fuzzy) and collect output files.
+"""
+from __future__ import annotations
 import os
-import sys
 from pathlib import Path
 
 import traci
-import sumolib
 
 from fuzzylts.controllers import get_controller
 from fuzzylts.utils.log import get_logger
@@ -23,18 +27,25 @@ def run_sumo_once(
     step_length: float = 1.0,
 ) -> tuple[Path, Path]:
     """
-    Corre SUMO hasta el final y devuelve `(tripinfo_xml, stats_xml)`.
+    Execute a single SUMO simulation and return paths to the generated output.
 
-    *Genera*:
-        tripinfo.xml   – métricas vehículo-a-vehículo
-        stats.xml      – resumen estadístico global de la simulación
+    Args:
+        controller: Name of the controller ('static', 'actuated', 'fuzzy').
+        routes_xml: Path to the .rou.xml file with route definitions.
+        sumocfg:    Path to the base .sumocfg file (will be overridden).
+        output_dir: Directory where tripinfo.xml and stats.xml will be written.
+        sim_seed:   Random seed for reproducibility.
+        step_length: Simulation step length in seconds.
+
+    Returns:
+        A tuple (tripinfo_xml, stats_xml).
     """
+    # Prepare output directory
     output_dir.mkdir(parents=True, exist_ok=True)
-
     tripinfo_xml = output_dir / "tripinfo.xml"
-    stats_xml    = output_dir / "stats.xml"
+    stats_xml = output_dir / "stats.xml"
 
-    # Construir línea de comando SUMO
+    # Build SUMO command
     sumo_cmd = [
         "sumo",
         "-c", str(sumocfg),
@@ -44,37 +55,40 @@ def run_sumo_once(
         "--statistic-output", str(stats_xml),
         "--step-length", str(step_length),
     ]
-    log.info("Running SUMO: %s", " ".join(sumo_cmd))
+    log.info("Starting SUMO: %s", " ".join(sumo_cmd))
     traci.start(sumo_cmd)
 
-    # Importación perezosa del controlador
-    ctl = get_controller(controller)
+    # Lazy-load controller function
+    controller_fn = get_controller(controller)
     tls_ids = traci.trafficlight.getIDList()
-    is_fuzzy  = controller == "fuzzy"
+    is_fuzzy = controller == "fuzzy"
 
-    last_phase = {tls: traci.trafficlight.getPhase(tls) for tls in tls_ids}
+    # Track previous phase to detect green-phase entry
+    prev_phase: dict[str, int] = {tls: traci.trafficlight.getPhase(tls) for tls in tls_ids}
 
-    # Bucle principal de simulación
+    # Simulation loop
     while traci.simulation.getMinExpectedNumber() > 0:
         traci.simulationStep()
         for tls in tls_ids:
-            phase_now = traci.trafficlight.getPhase(tls)
-            dur = ctl(tls)                 # ➊ SIEMPRE se invoca ⇒ escribe CSV
+            current_phase = traci.trafficlight.getPhase(tls)
+            # Always invoke controller to allow logging side-effects
+            green_duration = controller_fn(tls)
 
-            if is_fuzzy and phase_now in (0, 2) and phase_now != last_phase[tls]:
-                traci.trafficlight.setPhaseDuration(tls, dur)
+            # For fuzzy controller, override phase duration at green entry
+            if is_fuzzy and current_phase in (0, 2) and current_phase != prev_phase[tls]:
+                traci.trafficlight.setPhaseDuration(tls, green_duration)
 
-            last_phase[tls] = phase_now
+            prev_phase[tls] = current_phase
 
-
+    # Clean up TraCI
     traci.close(False)
-    
-    # ── limpiar .sumocfg temporal ─────────────────────────────────────────
+
+    # Remove temporary sumocfg if generated
     if sumocfg.name.startswith("_temp_") and sumocfg.exists():
         try:
             sumocfg.unlink()
-            log.debug("Temp cfg eliminado: %s", sumocfg)
+            log.debug("Removed temporary config: %s", sumocfg)
         except OSError as e:
-            log.warning("No se pudo borrar %s: %s", sumocfg, e)
+            log.warning("Failed to delete temp config %s: %s", sumocfg, e)
 
     return tripinfo_xml, stats_xml
