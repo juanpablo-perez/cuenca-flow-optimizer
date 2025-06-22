@@ -1,100 +1,140 @@
+# src/fuzzylts/controllers/actuated.py
+
 """
-controllers.actuated  –  modo *observer*
+controllers.actuated – observer mode
 ──────────────────────────────────────────
-• NO modifica la duración de los semáforos.
-• Registra fases 0 y 2 en CSV exactamente como tu script standalone.
-• El CSV se guarda en FUZZYLTS_RUN_DIR/datos_semaforos_actuated.csv.
+Does not modify signal durations. Records green phases (0 & 2) to CSV
+`datos_semaforos_actuated.csv` under the experiment run directory.
 """
 
 from __future__ import annotations
-import csv, statistics, os
+import csv
+import statistics
+import os
+import atexit
 from pathlib import Path
 from typing import Dict, List
+
 import traci
+
 from fuzzylts.utils.log import get_logger
 
 log = get_logger(__name__)
 
-SEMAFOROS = [
+# ── Configuration ─────────────────────────────────────────────────────────
+TLS_IDS: List[str] = [
     "2496228891",
     "cluster_12013799525_12013799526_2496228894",
     "cluster_12013799527_12013799528_2190601967",
     "cluster_12013799529_12013799530_473195061",
 ]
 
-FASES_LANES: Dict[str, Dict[int, List[str]]] = {
+PHASE_LANES_MAP: Dict[str, Dict[int, List[str]]] = {
     "2496228891": {
-        0: ["337277951#3_0", "337277951#3_1", "337277951#1_0", "337277951#1_1", "337277951#4_0", "337277951#4_1", "337277951#2_0", "337277951#2_1", "49217102_0"], 
-        2: ["567060342#1_0", "567060342#0_0"], 
+        0: [
+            "337277951#3_0", "337277951#3_1", "337277951#1_0",
+            "337277951#1_1", "337277951#4_0", "337277951#4_1",
+            "337277951#2_0", "337277951#2_1", "49217102_0",
+        ],
+        2: ["567060342#1_0", "567060342#0_0"],
     },
     "cluster_12013799525_12013799526_2496228894": {
         0: ["42143912#5_0", "42143912#3_0", "42143912#4_0"],
-        2: ["337277973#1_0", "337277973#1_1", "337277973#0_1", "337277973#0_0", "567060342#1_0", "567060342#0_0"]
+        2: [
+            "337277973#1_0", "337277973#1_1", "337277973#0_1",
+            "337277973#0_0", "567060342#1_0", "567060342#0_0",
+        ],
     },
     "cluster_12013799527_12013799528_2190601967": {
         0: ["40668087#1_0"],
-        2: ["337277981#1_1", "337277981#1_0", "337277981#2_1", "337277981#2_0", "42143912#5_0", "42143912#3_0", "42143912#4_0"]
+        2: [
+            "337277981#1_1", "337277981#1_0", "337277981#2_1",
+            "337277981#2_0", "42143912#5_0", "42143912#3_0",
+            "42143912#4_0",
+        ],
     },
     "cluster_12013799529_12013799530_473195061": {
         0: ["49217102_0"],
-        2: ["337277970#1_0", "337277970#1_1", "40668087#1_0"]
-    }
+        2: ["337277970#1_0", "337277970#1_1", "40668087#1_0"],
+    },
 }
 
-RUN_DIR  = Path(os.environ.get("FUZZYLTS_RUN_DIR", "."))
-CSV_FILE = RUN_DIR / "datos_semaforos_actuated.csv"
+RUN_DIR: Path = Path(os.getenv("FUZZYLTS_RUN_DIR", "."))
+CSV_PATH: Path = RUN_DIR / "datos_semaforos_actuated.csv"
 
-_state: Dict[str, Dict[str, int]] = {tls: {"fase": -1, "inicio": 0} for tls in SEMAFOROS}
-_hist = []
-_min_green, _max_green = float("inf"), float("-inf")
+# ── Internal state ───────────────────────────────────────────────────────
+_tls_state: Dict[str, Dict[str, int]] = {
+    tls: {"phase": -1, "start_time": 0} for tls in TLS_IDS
+}
+_phase_records: List[Dict] = []
+_min_green: int = float("inf")
+_max_green: int = float("-inf")
 
-def _log(fase: int, tls: str, dur: int, vehs: int, ini: int) -> None:
+
+def _record_phase(
+    tls_id: str, phase: int, duration: int, vehicles: int, start_time: int
+) -> None:
+    """Append a completed green phase to the internal record."""
     global _min_green, _max_green
-    _hist.append({
-        "tiempo": traci.simulation.getTime() - dur,
-        "semaforo_id": tls,
-        "fase": fase,
-        "duracion": dur,
-        "vehiculos_en_carriles": vehs,
-        "paso_inicio": ini,
-    })
-    _min_green = min(_min_green, dur)
-    _max_green = max(_max_green, dur)
+    entry = {
+        "time": traci.simulation.getTime() - duration,
+        "traffic_light_id": tls_id,
+        "phase": phase,
+        "duration": duration,
+        "vehicle_count": vehicles,
+        "start_step": start_time,
+    }
+    _phase_records.append(entry)
+    _min_green = min(_min_green, duration)
+    _max_green = max(_max_green, duration)
+
 
 def get_phase_duration(tls_id: str) -> int:
     """
-    Devuelve 0 para indicar que **no** se debe modificar la duración.
-    Solo registra la fase que acaba de terminar.
+    Observer for SUMO-actuated mode. Always returns 0 (no modification).
+    Records elapsed green-phase durations (phases 0 and 2).
     """
-    now  = int(traci.simulation.getCurrentTime() / 1000)
-    fase = traci.trafficlight.getPhase(tls_id)
+    current_step = int(traci.simulation.getCurrentTime() / 1000)
+    phase = traci.trafficlight.getPhase(tls_id)
+    prev = _tls_state[tls_id]
 
-    prev = _state[tls_id]
-    if prev["fase"] in (0, 2):
-        dur  = now - prev["inicio"]
-        lanes = FASES_LANES[tls_id][prev["fase"]]
-        vehs  = sum(traci.lane.getLastStepVehicleNumber(l) for l in lanes)
-        _log(prev["fase"], tls_id, dur, vehs, prev["inicio"])
+    # If previous phase was green (0 or 2), record it
+    if prev["phase"] in (0, 2):
+        duration = current_step - prev["start_time"]
+        lanes = PHASE_LANES_MAP[tls_id][prev["phase"]]
+        vehicle_count = sum(
+            traci.lane.getLastStepVehicleNumber(l) for l in lanes
+        )
+        _record_phase(tls_id, prev["phase"], duration, vehicle_count, prev["start_time"])
 
-    prev.update({"fase": fase, "inicio": now})
-    return 0  # <<– NUNCA se usará
+    # Update state for the new phase
+    prev["phase"] = phase
+    prev["start_time"] = current_step
 
-# Guardar CSV al salir
-import atexit
+    return 0
+
+
 @atexit.register
-def _dump():
-    if not _hist:
+def _write_csv() -> None:
+    """Write recorded green-phase data to CSV on program exit."""
+    if not _phase_records:
         return
-    CSV_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with CSV_FILE.open("w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=_hist[0].keys())
-        w.writeheader()
-        w.writerows(_hist)
 
-    verdes = [h["duracion"] for h in _hist]
-    media  = statistics.mean(verdes)
-    var    = statistics.variance(verdes) if len(verdes) > 1 else 0
-    try: moda = statistics.mode(verdes)
-    except statistics.StatisticsError: moda = "No única"
-    log.info("Actuated-observer  min:%s max:%s mean:%.2f moda:%s var:%.2f",
-             _min_green, _max_green, media, moda, var)
+    CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with CSV_PATH.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=_phase_records[0].keys())
+        writer.writeheader()
+        writer.writerows(_phase_records)
+
+    durations = [r["duration"] for r in _phase_records]
+    mean = statistics.mean(durations)
+    var = statistics.variance(durations) if len(durations) > 1 else 0
+    try:
+        mode = statistics.mode(durations)
+    except statistics.StatisticsError:
+        mode = "No unique"
+
+    log.info(
+        "Actuated-observer summary – min:%ds, max:%ds, mean:%.2fs, mode:%s, var:%.2f",
+        _min_green, _max_green, mean, mode, var
+    )
