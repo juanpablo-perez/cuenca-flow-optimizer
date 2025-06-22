@@ -1,0 +1,6 @@
+{
+  "controller": "fuzzy",
+  "scenario": "medium",
+  "seed": 1,
+  "log_level": "DEBUG"
+}

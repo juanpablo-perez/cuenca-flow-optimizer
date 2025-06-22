@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2025-06-21 20:02:23 by Eclipse SUMO sumo Version v1_22_0+1225-450f2e124d0
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="/home/juanpablo/Desktop/FuzzyTLS/sumo_files/osm.net_static.xml"/>
+        <route-files value="/home/juanpablo/Desktop/FuzzyTLS/sumo_files/generated_routes_medium.rou.xml"/>
+        <additional-files value="/home/juanpablo/Desktop/FuzzyTLS/sumo_files/osm.poly.xml.gz,/home/juanpablo/Desktop/FuzzyTLS/sumo_files/output.add.xml"/>
+    </input>
+
+    <output>
+        <tripinfo-output value="/home/juanpablo/Desktop/FuzzyTLS/experiments/fuzzy_medium_00_1750554142/tripinfo.xml"/>
+        <statistic-output value="/home/juanpablo/Desktop/FuzzyTLS/experiments/fuzzy_medium_00_1750554142/stats.xml"/>
+    </output>
+
+    <time>
+        <step-length value="1.0"/>
+    </time>
+
+    <processing>
+        <ignore-route-errors value="true"/>
+        <tls.actuated.jam-threshold value="30"/>
+    </processing>
+
+    <routing>
+        <device.rerouting.adaptation-steps value="18"/>
+        <device.rerouting.adaptation-interval value="10"/>
+    </routing>
+
+    <report>
+        <verbose value="true"/>
+        <duration-log.statistics value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+    <traci_server>
+        <remote-port value="60145"/>
+    </traci_server>
+
+    <random_number>
+        <seed value="0"/>
+    </random_number>
+
+    <gui_only>
+        <gui-settings-file value="/home/juanpablo/Desktop/FuzzyTLS/sumo_files/osm.view.xml"/>
+    </gui_only>
+
+</sumoConfiguration>
+-->
+
+<statistics xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/statistic_file.xsd">
+</statistics>
