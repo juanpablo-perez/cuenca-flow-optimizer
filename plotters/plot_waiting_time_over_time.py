@@ -10,8 +10,8 @@ from pathlib import Path
 from plotters.ieee_style import set_plot_style
 
 # ─── Configuration ───────────────────────────────────────────────────────
-SCENARIO     = "high"        # low / medium / high / very_high
-CONTROLLERS  = ["static", "actuated", "fuzzy"]
+SCENARIO     = "medium"        # low / medium / high / very_high
+CONTROLLERS = ["static", "actuated", "fuzzy", "gap_actuated"]
 BIN_WIDTH    = 600             # seconds
 OUTPUT_DIR   = Path("plots")
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -34,7 +34,7 @@ def format_label(sec: int) -> str:
 
 def main():
     set_plot_style()
-    fig, ax = plt.subplots(figsize=(8, 3))
+    fig, ax = plt.subplots(figsize=(16, 9))
 
     for ctl in CONTROLLERS:
         df = load_tripinfo(ctl, SCENARIO)
@@ -48,15 +48,15 @@ def main():
         x = [format_label(iv.left) for iv in smooth.index]
         ax.plot(x, smooth.values, label=ctl.capitalize(), marker="o")
 
-    ax.set_xlabel("Time of day (HH:MM)")
-    ax.set_ylabel("Mean waiting time (s)")
+    ax.set_xlabel("Time of day (HH:MM)", fontsize=20)
+    ax.set_ylabel("Mean waiting time (s)", fontsize=20)
     ax.set_title("Avg waiting time vs. simulation time")
-    ax.legend()
+    ax.legend(fontsize=16)
     plt.xticks(rotation=45)
     plt.tight_layout()
 
     out = OUTPUT_DIR / f"waiting_time_over_time_{SCENARIO}.pdf"
-    plt.savefig(out)
+    plt.savefig(out, dpi=300)
     print(f"✔ Saved {out}")
     plt.show()
 

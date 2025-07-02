@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
         description="Run one SUMO simulation with a given controller and scenario."
     )
     parser.add_argument(
-        "-c", "--controller", choices=["static", "actuated", "fuzzy"],
+        "-c", "--controller", choices=["static", "actuated", "fuzzy", "gap_actuated"],
         required=True, help="Traffic-light controller to use."
     )
     parser.add_argument(

@@ -12,7 +12,7 @@ from plotters.ieee_style import set_plot_style, arch_color, esc_marker
 
 # ─── Configuration ───────────────────────────────────────────────────────
 SCENARIO    = "medium"       # low / medium / high / very_high
-CONTROLLERS = ["static", "actuated", "fuzzy"]
+CONTROLLERS = ["static", "actuated", "fuzzy", "gap_actuated"]
 OUTPUT_DIR  = Path("plots")
 OUTPUT_DIR.mkdir(exist_ok=True)
 

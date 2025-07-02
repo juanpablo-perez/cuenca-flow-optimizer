@@ -36,12 +36,20 @@ def load_experiment_metrics(exp_dir: Path = Path("experiments")) -> pd.DataFrame
         # parse controller, scenario, seed from directory name
         parts = run_dir.name.split("_")
         if len(parts) >= 3:
-            rec["controller"] = parts[0]
-            rec["scenario"]   = parts[1]
+            if parts[0] == 'gap':
+                rec["controller"] = 'gap_actuated'
+            else:
+                rec["controller"] = parts[0]
+
+            if parts[-3] == 'very':
+                rec["scenario"]   = 'very_high'
+            else:    
+                rec["scenario"]   = parts[-2]
+
             try:
-                rec["seed"] = int(parts[2])
+                rec["seed"] = int(parts[-1])
             except ValueError:
-                rec["seed"] = parts[2]
+                rec["seed"] = parts[-1]
 
         records.append(rec)
 

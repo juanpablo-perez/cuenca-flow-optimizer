@@ -122,4 +122,7 @@ def get_phase_duration(tls_id: str) -> int:
         "Fuzzy %s phase %d → vehicles=%d, rate=%.3f → green=%ds",
         tls_id, phase, total_vehicles, avg_rate, green_dur,
     )
+    # print(
+    #     f"Fuzzy {tls_id} phase {phase} → vehicles={total_vehicles}, rate={avg_rate} → green={green_dur}s"
+    # )
     return green_dur

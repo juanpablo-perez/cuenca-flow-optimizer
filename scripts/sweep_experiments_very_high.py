@@ -8,7 +8,8 @@ import pandas as pd
 from fuzzylts.utils.stats import load_experiment_metrics, ci
 
 
-CONTROLLERS = ["static","actuated","fuzzy"]
+# CONTROLLERS = ["static","actuated","fuzzy"]
+CONTROLLERS = ["gap_actuated"]
 SCENARIOS   = ["very_high"]
 SEEDS       = range(10)
 
