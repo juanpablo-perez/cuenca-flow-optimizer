@@ -1,65 +1,57 @@
-import os
-import pandas as pd
+#!/usr/bin/env python3
+"""
+barras.py – Bar chart of mean waiting time ±95% CI by controller & scenario.
+"""
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
-from scipy import stats
+from pathlib import Path
 
-# Crear carpeta de salida si no existe
-os.makedirs('../resultados', exist_ok=True)
+from fuzzylts.utils.stats import load_experiment_metrics, ci
+from plotters.ieee_style import set_plot_style, arch_color_intense
 
-# Archivos CSV y etiquetas
-archivos = {
-    'Estático': './tripinfo_static.csv',
-    'Lógica Difusa': './tripinfo_fuzzy.csv',
-    'Actuated (SUMO)': './tripinfo_actuated.csv'
-}
+# ─── Configuration ───────────────────────────────────────────────────────
+CONTROLLERS = ["static", "actuated", "fuzzy"]
+SCENARIOS   = ["low", "medium", "high", "very"]
+BAR_WIDTH   = 0.2
+OUTPUT_DIR  = Path("plots")
+OUTPUT_DIR.mkdir(exist_ok=True)
 
-# Métricas a graficar
-metricas = [
-    "tripinfo_arrivalSpeed",
-    "tripinfo_duration",
-    "tripinfo_routeLength",
-    "tripinfo_timeLoss",
-    "tripinfo_waitingTime"
-]
+def main():
+    set_plot_style()
+    df = load_experiment_metrics()
 
-# Leer datos
-datos = {}
-for etiqueta, archivo in archivos.items():
-    datos[etiqueta] = pd.read_csv(archivo)
+    x = np.arange(len(CONTROLLERS))
+    fig, ax = plt.subplots(figsize=(7, 3))
 
-# Función para calcular media e intervalo de confianza
-def calcular_estadisticas(columna):
-    medias = []
-    errores = []
-    for etiqueta in archivos:
-        serie = datos[etiqueta][columna].dropna()
-        media = np.mean(serie)
-        sem = stats.sem(serie)  # error estándar de la media
-        intervalo = stats.t.interval(0.95, len(serie)-1, loc=media, scale=sem)
-        error = media - intervalo[0]
-        medias.append(media)
-        errores.append(error)
-    return medias, errores
+    for i, scen in enumerate(SCENARIOS):
+        means, errs = [], []
+        for ctl in CONTROLLERS:
+            sub = df[(df.controller == ctl) & (df.scenario == scen)]
+            m = sub.avg_wait.mean()
+            lo, hi = ci(sub.avg_wait)
+            means.append(m)
+            errs.append((hi - lo) / 2)
+        offset = (i - 1.5) * BAR_WIDTH
+        ax.bar(
+            x + offset, means, BAR_WIDTH,
+            yerr=errs, capsize=3,
+            label=scen.capitalize() if scen != "very" else "Very High",
+            color=arch_color_intense(i)
+        )
 
-# Graficar
-for metrica in metricas:
-    medias, errores = calcular_estadisticas(metrica)
-    
-    fig, ax = plt.subplots()
-    etiquetas = list(archivos.keys())
-    x = np.arange(len(etiquetas))
-    ax.bar(x, medias, yerr=errores, capsize=10, color=['skyblue', 'salmon', 'lightgreen'])
     ax.set_xticks(x)
-    ax.set_xticklabels(etiquetas)
-    ax.set_ylabel(metrica)
-    ax.set_title(f'{metrica} con Intervalos de Confianza al 95%')
-    ax.grid(True, linestyle='--', alpha=0.6)
-
-    # Guardar gráfica
-    ruta = f'./results/{metrica}.png'
+    ax.set_xticklabels([c.capitalize() for c in CONTROLLERS])
+    ax.set_xlabel("Controller")
+    ax.set_ylabel("Avg waiting time (s)")
+    ax.set_title("Average waiting time by controller & scenario")
+    ax.legend(title="Scenario", ncol=2)
     plt.tight_layout()
-    plt.savefig(ruta)
-    plt.close()
 
-print("✅ Gráficas guardadas en ../resultados")
+    out = OUTPUT_DIR / "avg_wait_bars.pdf"
+    plt.savefig(out)
+    print(f"✔ Saved {out}")
+    plt.show()
+
+if __name__ == "__main__":
+    main()

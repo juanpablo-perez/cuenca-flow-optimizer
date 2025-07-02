@@ -19,6 +19,7 @@ log = get_logger(__name__)
 
 
 def run_sumo_once(
+    sumo_binary: str,
     controller: str,
     routes_xml: Path,
     sumocfg: Path,
@@ -44,16 +45,20 @@ def run_sumo_once(
     output_dir.mkdir(parents=True, exist_ok=True)
     tripinfo_xml = output_dir / "tripinfo.xml"
     stats_xml = output_dir / "stats.xml"
+    emissions_xml = output_dir / "emissions.xml"
 
     # Build SUMO command
     sumo_cmd = [
-        "sumo",
+        sumo_binary,
         "-c", str(sumocfg),
         "--seed", str(sim_seed),
         "--route-files", str(routes_xml),
         "--tripinfo-output", str(tripinfo_xml),
         "--statistic-output", str(stats_xml),
+        "--emission-output", str(emissions_xml),
         "--step-length", str(step_length),
+        "--start",
+        "--quit-on-end",
     ]
     log.info("Starting SUMO: %s", " ".join(sumo_cmd))
     traci.start(sumo_cmd)

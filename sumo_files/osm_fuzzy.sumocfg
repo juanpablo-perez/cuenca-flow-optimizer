@@ -13,6 +13,7 @@
 <output>
     <tripinfo-output value="tripinfo_fuzzy.xml"/>
     <statistic-output value="stats_fuzzy.xml"/>
+    <emission-output value="emissions_fuzzy.xml"/>
 </output>
 
 
@@ -24,6 +25,7 @@
     <routing>
         <device.rerouting.adaptation-steps value="18"/>
         <device.rerouting.adaptation-interval value="10"/>
+        <device.rerouting.probability value="0"/>
     </routing>
 
     <report>

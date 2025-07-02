@@ -1,0 +1,43 @@
+# configs/controller/fuzzy.yaml
+sumo_cfg: osm_fuzzy.sumocfg
+
+semaforos:
+  - "2496228891"
+  - "cluster_12013799525_12013799526_2496228894"
+  - "cluster_12013799527_12013799528_2190601967"
+  - "cluster_12013799529_12013799530_473195061"
+
+fases_lanes:
+  "2496228891":
+    0:
+      - "337277951#3_0"
+      - "337277951#3_1"
+      - "337277951#1_0"
+      # ...
+    2:
+      - "567060342#1_0"
+      - "567060342#0_0"
+  "cluster_12013799525_12013799526_2496228894":
+    0: [ "42143912#5_0", "42143912#3_0", "42143912#4_0" ]
+    2: [ "337277973#1_0", "337277973#1_1", ... ]
+
+funciones:
+  llegada:
+    lmin: 0.0
+    lmax: 1.0
+    niveles: [ "muy lenta", "lenta", "media", "moderada", "alta" ]
+  vehiculos:
+    lmin: 0
+    lmax: 30
+    niveles: [ "muy pocos", "pocos", "normal", "moderados", "muchos" ]
+  verde:
+    lmin: 15
+    lmax: 50
+    niveles: [ "muy corto", "corto", "normal", "alto", "muy alto" ]
+
+reglas:
+  - [ "muy pocos",   "muy lenta",  "muy corto" ]
+  - [ "muy pocos",   "lenta",      "muy corto" ]
+  # …
+  - [ "muchos",      "moderada",   "alto" ]
+  - [ "muchos",      "alta",       "alto" ]

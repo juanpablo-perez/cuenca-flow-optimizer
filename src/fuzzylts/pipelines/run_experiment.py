@@ -43,6 +43,10 @@ def parse_args() -> argparse.Namespace:
         required=True, help="Traffic-light controller to use."
     )
     parser.add_argument(
+        "--sumo-binary", choices=["sumo", "sumo-gui"], 
+        default="sumo", help="Sumo binary to launch simulation"
+    )
+    parser.add_argument(
         "-s", "--scenario", choices=["low", "medium", "high", "very_high"],
         required=True, help="Traffic demand scenario."
     )
@@ -118,13 +122,15 @@ def main() -> None:
     })
 
     # Create unique run directory
-    run_id = f"{args.controller}_{args.scenario}_{args.seed:02d}_{int(time.time())}"
+    run_id = f"{args.controller}_{args.scenario}_{args.seed:02d}"
     out_dir = EXP_DIR / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
+
     os.environ["FUZZYLTS_RUN_DIR"] = str(out_dir)
 
     # Execute SUMO + controller
     trip_xml, stats_xml = run_sumo_once(
+        sumo_binary=args.sumo_binary,
         controller=args.controller,
         routes_xml=routes_file,
         sumocfg=temp_cfg,

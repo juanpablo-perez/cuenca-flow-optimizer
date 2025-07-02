@@ -28,8 +28,8 @@ BASE_DEMAND_VPH: List[int] = [500, 700, 900, 700]
 SCENARIO_MULTIPLIERS: Dict[str, float] = {
     "low": 0.5,
     "medium": 1.0,
-    "high": 1.3,
-    "very_high": 1.7,
+    "high": 2.0,
+    "very_high": 3.0, # TELEPORTING WANTED
 }
 
 # Route definitions: (from_edge, to_edge, density_factor)
