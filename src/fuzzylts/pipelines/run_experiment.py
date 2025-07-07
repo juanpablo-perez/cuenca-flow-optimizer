@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
         default="sumo", help="Sumo binary to launch simulation"
     )
     parser.add_argument(
-        "-s", "--scenario", choices=["low", "medium", "high", "very_high"],
+        "-s", "--scenario", choices=["low", "medium", "high", "very_high", "medium_extended"],
         required=True, help="Traffic demand scenario."
     )
     parser.add_argument(

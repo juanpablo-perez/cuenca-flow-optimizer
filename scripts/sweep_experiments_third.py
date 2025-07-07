@@ -10,8 +10,9 @@ from fuzzylts.utils.stats import load_experiment_metrics, ci
 
 # CONTROLLERS = ["static","actuated","fuzzy"]
 CONTROLLERS = ["gap_actuated"]
-SCENARIOS   = ["high"]
-SEEDS       = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+SCENARIOS   = ["medium_extended"]
+SEEDS       = [0, 1, 2, 3, 4]
+
 
 def run_one(ctrl, scn, seed):
     cmd = [

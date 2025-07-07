@@ -31,14 +31,6 @@ NO_VEHICLE_LIMIT: float = 2.0   # s sin cola para cortar la fase
 MIN_GREEN:        float = 2.0   # s de verde mínimo
 STEP_LENGTH:      float = 1.0   # s – debe coincidir con --step-length
 
-# ── Cargar misma config que el difuso ─────────────────────────────────
-# _cfg_path = Path(
-#     traci.miscutils.env.get("FUZZYLTS_FUZZY_CONFIG", "")  # type: ignore
-# )
-# _cfg = (FuzzyConfig.load(_cfg_path) if _cfg_path.is_file() else
-#         FuzzyConfig.load(
-#             Path(__file__).resolve().parents[3] / "configs/controller/fuzzy.yaml"
-#         ))
 # ── Cargar la misma config que el difuso ─────────────────────────────
 _cfg_path = os.getenv("FUZZYLTS_FUZZY_CONFIG")
 if _cfg_path:
