@@ -1,71 +1,114 @@
 #!/usr/bin/env python3
 """
 plot_emissions_bar.py –
-Bar chart of total CO₂ emissions per controller (mean ± 95% CI).
+Grouped bar chart of total CO₂ emissions per scenario,
+scenarios on x-axis, controllers as bar series (mean ± 95 % CI),
+values annotated en notación de ingeniería (p.ej. 1.23 Gg).
 """
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import EngFormatter
 from scipy.stats import t
 
 from fuzzylts.utils.stats import load_all_emissions
-from plotters.ieee_style import set_plot_style, arch_color_intense
+from plotters.ieee_style import set_ieee_style, new_figure, arch_color_intense
 
 # ─── Configuration ────────────────────────────────────────────────────────
-SCENARIO    = "medium"                        # low / medium / high / very_high
-CONTROLLERS = ["static", "actuated", "gap_actuated"]
-POLLUTANT   = "CO2"
-OUTPUT_DIR  = Path("plots")
+SCENARIOS    = ["low", "medium", "high", "very_high"]
+CONTROLLERS  = ["static", "actuated", "gap_fuzzy"]
+POLLUTANT    = "CO2"
+OUTPUT_DIR   = Path("plots")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-
 def main() -> None:
-    set_plot_style()
+    # Estilo IEEE
+    set_ieee_style()
+    fig, ax = new_figure(columns=2)
 
-    # load everything and filter to our scenario
+    # ── Carga y preprocesado ───────────────────────────────────────────────
     df_all = load_all_emissions(POLLUTANT)
-    df = df_all[df_all["scenario"] == SCENARIO]
+    if "run" in df_all.columns and "run_id" not in df_all.columns:
+        df_all = df_all.rename(columns={"run": "run_id"})
 
-    means: list[float] = []
-    cis:   list[float] = []
-    labels: list[str] = []
+    n_scen  = len(SCENARIOS)
+    n_ctrls = len(CONTROLLERS)
+    means   = np.zeros((n_scen, n_ctrls))
+    cis     = np.zeros((n_scen, n_ctrls))
 
-    # compute per-run totals → mean ± CI
-    for i, ctl in enumerate(CONTROLLERS):
-        df_ctl = df[df["controller"] == ctl]
-        total_by_run = df_ctl.groupby("run")[POLLUTANT].sum()
-        n = total_by_run.count()
-        mean_val = total_by_run.mean()
-        sem_val  = total_by_run.sem()
-        t_crit   = t.ppf(0.975, df=n - 1)
-        ci95     = sem_val * t_crit
+    # ── Media e IC 95 %  → [scenario, controller] ──────────────────────────
+    for i, scenario in enumerate(SCENARIOS):
+        df_sc = df_all[df_all["scenario"] == scenario]
+        for j, ctl in enumerate(CONTROLLERS):
+            df_ctl       = df_sc[df_sc["controller"] == ctl]
+            total_by_run = df_ctl.groupby("run_id")[POLLUTANT].sum()
 
-        means.append(mean_val)
-        cis.append(ci95)
-        labels.append(ctl.capitalize())
+            n        = total_by_run.count()
+            mean_val = total_by_run.mean() if n > 0 else 0.0
+            sem_val  = total_by_run.sem()  if n > 1 else 0.0
+            t_crit   = t.ppf(0.975, df=n-1) if n > 1 else 0.0
+            ci95     = sem_val * t_crit
 
-    # plot
-    fig, ax = plt.subplots(figsize=(8, 6))
-    x = np.arange(len(labels))
-    colors = [arch_color_intense(i) for i in range(len(labels))]
-    ax.bar(x, means, yerr=cis, capsize=8, width=0.6, color=colors)
+            means[i, j] = mean_val
+            cis[i, j]   = ci95
 
+    # ── Plot ───────────────────────────────────────────────────────────────
+    x           = np.arange(n_scen)
+    total_width = 0.8
+    bar_width   = total_width / n_ctrls
+    offsets     = (np.arange(n_ctrls) - (n_ctrls - 1) / 2) * bar_width
+    max_ci      = cis.max() if cis.size > 0 else 0.0
+
+    eng_txt  = EngFormatter(unit="g", places=2)  # para las etiquetas de texto
+    eng_axis = EngFormatter(unit="g")            # para el eje y
+
+    for j, ctl in enumerate(CONTROLLERS):
+        heights = means[:, j]
+        errors  = cis[:, j]
+        xpos    = x + offsets[j]
+
+        bars = ax.bar(
+            xpos,
+            heights,
+            width=bar_width,
+            yerr=errors,
+            capsize=5,
+            label=ctl.replace("_", " ").capitalize(),
+            color=arch_color_intense(j),
+        )
+
+        # Anota cada barra
+        for bar in bars:
+            h = bar.get_height()
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                h + max_ci * 0.07,
+                eng_txt.format_eng(h),
+                ha="left", va="bottom",
+                rotation=60, rotation_mode="anchor",
+                fontweight="normal",             # ← sin negrita
+                fontsize=8,
+            )
+
+
+    # ── Etiquetas, formato, leyenda ───────────────────────────────────────
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=12)
-    ax.set_ylabel(f"Total {POLLUTANT} emitted (g)", fontsize=14)
-    ax.set_title(
-        f"Total {POLLUTANT} Emissions by Controller\n"
-        f"(Scenario: {SCENARIO}, mean ± 95% CI)",
-        fontsize=16
-    )
-    ax.grid(axis="y", linestyle="--", alpha=0.5)
+    ax.set_xticklabels([s.replace("_", " ").capitalize() for s in SCENARIOS])
+    ax.set_ylabel(f"Total {POLLUTANT} emitted")
+    ax.set_xlabel(f"Scenarios")
+    ax.yaxis.set_major_formatter(eng_axis)
+    # ax.set_title(
+    #     f"Total {POLLUTANT} Emissions by Scenario and Controller\n"
+    #     "(mean ± 95 % CI)"
+    # )
+    ax.legend(title="Controller")
+    ax.grid(axis="y")
 
-    plt.tight_layout()
-    out = OUTPUT_DIR / f"{POLLUTANT.lower()}_bar_{SCENARIO}.pdf"
-    plt.savefig(out, dpi=300)
+    # ── Guardar y mostrar ─────────────────────────────────────────────────
+    out = OUTPUT_DIR / f"{POLLUTANT.lower()}_bar_by_scenario.pdf"
+    plt.savefig(out, bbox_inches="tight")
     print(f"✔ Saved {out}")
     plt.show()
-
 
 if __name__ == "__main__":
     main()

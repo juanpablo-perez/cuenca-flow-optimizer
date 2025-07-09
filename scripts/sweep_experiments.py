@@ -8,7 +8,7 @@ import pandas as pd
 from fuzzylts.utils.stats import load_experiment_metrics, ci
 
 
-CONTROLLERS = ["static","actuated","fuzzy"]
+CONTROLLERS = ["static","actuated","gap_fuzzy"]
 SCENARIOS   = ["low","medium","high","very_high"]
 SEEDS       = range(10)
 
@@ -27,18 +27,18 @@ if __name__ == "__main__":
         run_one(ctrl, scn, seed)
 
     # Once all runs are done, load & summarize
-    # df = load_experiment_metrics()
-    # summary = (
-    #   df
-    #   .groupby(["controller","scenario"])
-    #   .agg(
-    #     avg_wait     = pd.NamedAgg("avg_wait",     "mean"),
-    #     ci_wait_low  = pd.NamedAgg("avg_wait", lambda s: ci(s)[0]),
-    #     ci_wait_high = pd.NamedAgg("avg_wait", lambda s: ci(s)[1]),
-    #     avg_duration = pd.NamedAgg("avg_duration", "mean"),
-    #     # … add more as you like
-    #   )
-    #   .reset_index()
-    # )
-    # summary.to_csv("experiments/summary.csv", index=False)
-    # print("Done. Summary written to experiments/summary.csv")
+    df = load_experiment_metrics()
+    summary = (
+      df
+      .groupby(["controller","scenario"])
+      .agg(
+        avg_wait     = pd.NamedAgg("avg_wait",     "mean"),
+        ci_wait_low  = pd.NamedAgg("avg_wait", lambda s: ci(s)[0]),
+        ci_wait_high = pd.NamedAgg("avg_wait", lambda s: ci(s)[1]),
+        avg_duration = pd.NamedAgg("avg_duration", "mean"),
+        # … add more as you like
+      )
+      .reset_index()
+    )
+    summary.to_csv("experiments/summary.csv", index=False)
+    print("Done. Summary written to experiments/summary.csv")

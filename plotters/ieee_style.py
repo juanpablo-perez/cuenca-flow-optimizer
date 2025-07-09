@@ -1,58 +1,115 @@
 # plotters/ieee_style.py
-import seaborn as sns
-import matplotlib as mpl
+"""
+Centralized, IEEE-compliant plotting style definitions.
 
-def set_plot_style():
+Use `set_ieee_style()` at the top of each script to apply:
+  – Times New Roman fonts
+  – IEEE-recommended font sizes (8–10 pt)
+  – Single-column / double-column figure widths
+  – 300 dpi output
+  – Clean grid, inward ticks, no top/right spines
+  – Consistent color & marker palettes
+
+Example:
+    from plotters.ieee_style import set_ieee_style, new_figure
+    set_ieee_style()
+    fig, ax = new_figure(columns=1)   # single-column width
+    ax.plot(x, y, label="…")
+    …
+"""
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+# ── IEEE figure dimensions (in inches) ───────────────────────────────────
+COLUMN_WIDTH        = 3.5   # single-column width in IEEE journals
+DOUBLE_COLUMN_WIDTH = 7.16  # double-column width
+ASPECT_RATIO        = 0.66  # height = width * aspect_ratio
+
+# ── Font families & sizes (in points) ────────────────────────────────────
+BASE_FONT_SIZE    = 11     # default tick & text
+TITLE_SIZE        = 14    # axis titles
+LABEL_SIZE        = 12     # axis labels
+LEGEND_FONT_SIZE  = 11     # legend text
+LEGEND_TITLE_SIZE = 12     # if using legend titles
+
+# ── Line & marker defaults ───────────────────────────────────────────────
+LINE_WIDTH   = 0.5
+MARKER_SIZE  = 2.0
+GRID_STYLE   = "--"
+GRID_COLOR   = "0.5"
+GRID_ALPHA   = 0.3
+
+# ── Color & marker palettes ──────────────────────────────────────────────
+# Up to eight distinct colors for architectures/controllers:
+ARCH_COLORS        = mpl.rcParams["axes.prop_cycle"].by_key()["color"][:8]
+INTENSE_ARCH_COLORS = mpl.cm.tab10.colors[:8]  # more saturated variant
+MARKERS            = ["o", "s", "D", "^", "v", "P", "X", "d"]
+
+def set_ieee_style() -> None:
     """
-    Configure a global, print-ready IEEE style for all figures.
+    Apply global IEEE-style settings to matplotlib.rcParams.
     """
-    sns.set_theme(
-        context="paper",
-        style="white",
-        font="DejaVu Sans",
-        palette="colorblind",
-        rc={
-            "axes.edgecolor": "#444444",
-            "axes.linewidth": 0.7,
-            "axes.grid": True,
-            "grid.alpha": 0.18,
-            "grid.linestyle": "--",
-            "axes.titlesize": 16,
-            "axes.titleweight": "bold",
-            "axes.labelsize": 12,
-            "xtick.labelsize": 11,
-            "ytick.labelsize": 11,
-            "legend.fontsize": 9,
-            "legend.frameon": False,
-            "lines.linewidth": 1.5,
-            "lines.markersize": 4,
-            "figure.dpi": 120,
-        }
-    )
-    # turn off top/right spines
+    mpl.rcParams.update({
+        # Fonts
+        "font.size":          BASE_FONT_SIZE,
+        # Axes
+        "axes.titlesize":     TITLE_SIZE,
+        "axes.titleweight":   "bold",
+        "axes.labelsize":     LABEL_SIZE,
+        "axes.linewidth":     LINE_WIDTH,
+        "axes.edgecolor":     "black",
+        # Ticks
+        "xtick.labelsize":    BASE_FONT_SIZE,
+        "ytick.labelsize":    BASE_FONT_SIZE,
+        "xtick.direction":    "in",
+        "ytick.direction":    "in",
+        # Grid
+        "axes.grid":          True,
+        "grid.linestyle":     GRID_STYLE,
+        "grid.color":         GRID_COLOR,
+        "grid.alpha":         GRID_ALPHA,
+        # Lines & markers
+        "lines.linewidth":    LINE_WIDTH,
+        "lines.markersize":   MARKER_SIZE,
+        # Legend
+        "legend.fontsize":    LEGEND_FONT_SIZE,
+        "legend.title_fontsize": LEGEND_TITLE_SIZE,
+        "legend.frameon":     False,
+        # Figure
+        "figure.dpi":         300,
+        "figure.autolayout":  True,
+    })
+    # disable top/right spines
     mpl.rcParams["axes.spines.top"] = False
     mpl.rcParams["axes.spines.right"] = False
 
-# Up to 8 distinct colors
-PALETTE_ARCH = sns.color_palette("colorblind", 8)
-MARKERS_ESC  = ["o", "s", "D", "^", "v", "P", "X", "d"]
+def new_figure(columns: int = 1,
+               aspect_ratio: float = ASPECT_RATIO):
+    """
+    Convenience: create a new figure+axis at IEEE column width.
+    Args:
+      columns: 1 for single-column, 2 for double-column.
+      aspect_ratio: height/width ratio.
+    Returns:
+      (fig, ax) tuple.
+    """
+    width = COLUMN_WIDTH if columns == 1 else DOUBLE_COLUMN_WIDTH
+    height = width * aspect_ratio
+    fig, ax = plt.subplots(figsize=(width, height))
+    return fig, ax
 
-# More intense palette (e.g. for bar charts)
-INTENSE_ARCH_PALETTE = sns.color_palette("Set1", 8)
-INTENSE_MARKERS_ESC  = MARKERS_ESC
+def arch_color(idx: int) -> str:
+    """Consistent color for the idx-th architecture/controller."""
+    return ARCH_COLORS[idx % len(ARCH_COLORS)]
 
-def arch_color(idx: int):
-    """Get a consistent color for the idx-th architecture."""
-    return PALETTE_ARCH[idx % len(PALETTE_ARCH)]
+def arch_color_intense(idx: int) -> str:
+    """More saturated color for highlights or bars."""
+    return INTENSE_ARCH_COLORS[idx % len(INTENSE_ARCH_COLORS)]
 
-def esc_marker(idx: int):
-    """Get a consistent marker for the idx-th scenario."""
-    return MARKERS_ESC[idx % len(MARKERS_ESC)]
+def esc_marker(idx: int) -> str:
+    """Consistent marker for the idx-th scenario."""
+    return MARKERS[idx % len(MARKERS)]
 
-def arch_color_intense(idx: int):
-    """Get a more saturated color for bar charts or highlights."""
-    return INTENSE_ARCH_PALETTE[idx % len(INTENSE_ARCH_PALETTE)]
-
-def esc_marker_intense(idx: int):
-    """Alternate marker set (unused by defaults, but available)."""
-    return INTENSE_MARKERS_ESC[idx % len(INTENSE_MARKERS_ESC)]
+def esc_marker_intense(idx: int) -> str:
+    """Alternate marker set (currently same as esc_marker)."""
+    return MARKERS[idx % len(MARKERS)]

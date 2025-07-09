@@ -40,7 +40,7 @@ def load_experiment_metrics(exp_dir: Path = EXP_DIR) -> pd.DataFrame:
             continue
         rec = pd.read_json(metrics_file, typ="series").to_dict()
         parts = run_dir.name.split("_")
-        rec['controller'] = 'gap_actuated' if parts[0] == 'gap' else parts[0]
+        rec['controller'] = 'gap_fuzzy' if parts[0] == 'gap' else parts[0]
         scen = parts[-3]
         rec['scenario'] = ('medium_extended' if scen == 'medium'
                            else ('very_high' if scen == 'very' else parts[-2]))
@@ -157,7 +157,7 @@ def load_all_tripinfo(force_reload: bool = False) -> pd.DataFrame:
       ['controller','scenario','run','arrival','waitingTime']  
     Caches in data/all_tripinfo.csv (unless force_reload=True).
     """
-    target = DATA_DIR / "all_tripinfo.csv"
+    target = DATA_DIR / "tripinfo.csv"
     if target.exists() and not force_reload:
         return pd.read_csv(target)
 
@@ -175,7 +175,7 @@ def load_all_tripinfo(force_reload: bool = False) -> pd.DataFrame:
 
         # extract controller/scenario from folder name
         parts = run.name.split("_")
-        controller = parts[0] if parts[0] != "gap" else "gap_actuated"
+        controller = parts[0] if parts[0] != "gap" else "gap_fuzzy"
         scen = parts[-3]
         df['scenario'] = ('medium_extended' if scen == 'medium'
                            else ('very_high' if scen == 'very' else parts[-2]))
@@ -200,7 +200,7 @@ def load_all_emissions(pollutant: str = 'CO2',
     Load or cache all emissions data across controllers and scenarios for a pollutant.
     Returns DataFrame with ['time', pollutant, 'controller','scenario','run_id'].
     """
-    csv_path = DATA_DIR / f"all_emissions_{pollutant.lower()}.csv"
+    csv_path = DATA_DIR / f"emissions_{pollutant.lower()}.csv"
     if csv_path.exists() and not force_reload:
         return pd.read_csv(csv_path)
 
@@ -210,7 +210,7 @@ def load_all_emissions(pollutant: str = 'CO2',
         if not xml_file.exists():
             continue
         parts = run_dir.name.split("_")
-        controller = 'gap_actuated' if parts[0] == 'gap' else parts[0]
+        controller = 'gap_fuzzy' if parts[0] == 'gap' else parts[0]
         scen = parts[-3]
         scenario = ('medium_extended' if scen == 'medium'
                     else ('very_high' if scen == 'very' else parts[-2]))

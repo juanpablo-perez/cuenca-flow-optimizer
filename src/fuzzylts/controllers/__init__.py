@@ -21,7 +21,7 @@ _CONTROLLER_MODULES: Dict[str, str] = {
     "static":   "fuzzylts.controllers.static",
     "actuated": "fuzzylts.controllers.actuated",
     "fuzzy":    "fuzzylts.controllers.fuzzy",
-    "gap_actuated": "fuzzylts.controllers.gap_actuated",
+    "gap_fuzzy": "fuzzylts.controllers.gap_fuzzy",
 }
 
 # Cache for imported controller functions

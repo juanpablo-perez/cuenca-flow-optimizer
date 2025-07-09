@@ -20,7 +20,7 @@ SIM_START = 0
 SECONDS_PER_HOUR = 3600
 
 # Base vehicle-per-hour demand for each hour (pattern will repeat if needed)
-BASE_DEMAND_VPH: List[int] = [500, 700, 900, 700]
+BASE_DEMAND_VPH: List[int] = [500, 650, 750, 600]
 
 # Scenarios: multiplier and duration in hours
 SCENARIOS: Dict[str, Dict[str, float | int]] = {

@@ -66,7 +66,7 @@ def run_sumo_once(
     # Lazy-load controller function
     controller_fn = get_controller(controller)
     tls_ids = traci.trafficlight.getIDList()
-    is_fuzzy =  controller in  ["fuzzy", "gap_actuated"] 
+    is_fuzzy =  controller in  ["fuzzy", "gap_fuzzy"] 
 
     # Track previous phase to detect green-phase entry
     prev_phase: dict[str, int] = {tls: traci.trafficlight.getPhase(tls) for tls in tls_ids}
