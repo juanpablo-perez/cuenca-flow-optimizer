@@ -1,6 +1,6 @@
 # Cuenca Adaptive TLS
 
-**Adaptive Traffic-Light Control to Optimize Urban Traffic Flow:  
+**Adaptive Traffic-Light Control to Optimise Urban Traffic Flow  
 A Case Study in the City of Cuenca, Ecuador**
 
 ---
@@ -19,94 +19,118 @@ A Case Study in the City of Cuenca, Ecuador**
 
 ## Abstract
 
-The city of Cuenca faces growing vehicular congestion due to an increasing number of vehicles, urban planning challenges, and unsynchronized traffic signals.  
-To improve traffic flow in the downtown area, we propose and evaluate two traffic-light control schemes:
+The historic centre of Cuenca suffers recurring congestion due to rising
+motorisation, geometric constraints, and poorly coordinated signals.
+We evaluate three control strategies in SUMO:
 
-1. **Static** – fixed signal timings as defined in the network file.  
-2. **Fuzzy** – adaptive green times via a Mamdani fuzzy inference system.  
-3. **Actuated (SUMO)** – SUMO’s built-in actuated traffic-light logic, recorded for comparison.
+1. **Static** – fixed splits prescribed by municipal regulation.  
+2. **Loop-Actuated** – SUMO’s off-the-shelf loop-detector logic.  
+3. **Gap-Fuzzy (proposed)** – a Mamdani fuzzy core for green-time
+   extension, wrapped by a *gap-out* overlay that cuts the phase when
+   the queue has been empty for 2 s (min. green 2 s).
 
-We conducted SUMO simulations across four traffic-demand scenarios (low, medium, high, very high), running **N = 10 seeds** per scenario/controller.  
-Results demonstrate that the fuzzy controller significantly reduces average waiting times and travel times compared to the static baseline, and XXXXXXXXX.
+Four demand levels are simulated (low → very‑high).  
+Across **N = 10 seeds** the Gap-Fuzzy controller lowers mean waiting time
+by up to 13 % under light traffic and matches Loop‑Actuated under heavy
+loads, while always outperforming the static baseline.
 
-**Keywords**: vehicular congestion · adaptive traffic-light control · fuzzy logic · actuated traffic lights · traffic simulation · Cuenca
+**Keywords**: traffic simulation · adaptive traffic lights · gap‑out
+termination · fuzzy logic · Cuenca
 
 ---
 
-## Quick Start
+## Quick Start
 
 ```bash
-# 1. Clone & setup
-git clone https://github.com/juanpablo-perez/.git
-cd <repo-name>
+# 1 · Clone & set‑up
+git clone https://github.com/juanpablo-perez/cuenca-flow-optimizer.git
+cd cuenca-flow-optimizer
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
 
-# 2. Run a simulation
-python -m fuzzylts.pipelines.run_experiment        --controller fuzzy        --scenario   medium        --seed       0        --log-level  INFO
+# 2 · Run a single experiment (medium demand, seed 0)
+python -m fuzzylts.pipelines.run_experiment \
+       --controller gap_fuzzy \
+       --scenario   medium \
+       --seed       0 \
+       --log-level  INFO
 ```
 
-By replacing `--controller fuzzy` with `static` or `actuated`, you can compare all three modes.  
-Results will be stored in `experiments/<controller>_<scenario>_<seed>_<timestamp>/`.
+Replace `--controller gap_fuzzy` with `static`, `actuated` or `fuzzy`
+to compare all strategies.  
+Results are written to  
+`experiments/<controller>_<scenario>_<seed>/`.
 
 ---
 
-## Project Structure
+## Project Structure
 
 ```
 .
-├── sumo_files/              ← network & route definitions (.sumocfg, .rou.xml)
-├── src/fuzzylts/            ← Python package (editable)
-│   ├── controllers/         ← static, actuated, fuzzy controllers
+├── sumo_files/              ← network & routes (.sumocfg, .rou.xml)
+├── src/fuzzylts/
+│   ├── controllers/         ← static · actuated · gap_fuzzy
+│   ├── sim/runner.py        ← SUMO + TraCI wrapper
 │   ├── pipelines/           ← CLI entry-points
-│   ├── sim/runner.py        ← SUMO+TraCI wrapper
-│   └── utils/               ← I/O, logging, fuzzy-system helpers
-├── experiments/             ← auto-generated outputs per run
-├── scripts/                 ← helper scripts (benchmark, plotting)
-└── README.md                ← this document
+│   └── utils/               ← I/O, logging, fuzzy helpers
+├── scripts/                 ← batch & plotting helpers
+├── experiments/             ← auto-generated outputs
+└── README.md
 ```
 
 ---
 
-## Full Benchmark
+## Full Benchmark
 
 ```bash
 bash scripts/run_full_benchmark.sh
 ```
 
-By default it runs **10 seeds × 4 scenarios × 3 controllers** ≈ 120 simulations.
+Runs **10 seeds × 4 scenarios × 3 controllers = 120** simulations
+(~2 h on a 6‑core laptop).
 
 ---
 
-## Results & Visualization
+## Results & Visualisation
 
-- **Raw outputs**:  
-  `tripinfo.xml`, `stats.xml`
+| Artifact                          | Produced by | Notes |
+|-----------------------------------|-------------|-------|
+| `tripinfo.xml`, `emissions.xml`   | SUMO        | One per experiment |
+| `data_queue_fuzzy.csv`, `data_tls_gf.csv` | Controller | Queue & phase history |
+| `plots/*.pdf`                     | `plotters/` | Bar charts, intraday curves |
 
-- **Adaptive logs**:  
-  `experiments/.../datos_colas_fuzzy.csv`  
-  `experiments/.../datos_semaforos_fuzzy.csv`  
-  `experiments/.../datos_semaforos_actuated.csv`
-
-- **Summarized metrics**:  
-  `metrics.json` (avg wait, travel time, speed, teleports)
-
-Use the scripts under `scripts/` or the Jupyter notebooks under `notebooks/` to generate confidence-interval plots.
+Example figures appear in the **Results** section of the paper
+(see `docs/paper.pdf`).
 
 ---
 
-## Citation
+## Gap–Fuzzy Logic (bird’s‑eye view)
 
-If you use this work, please cite:
+```text
+┌──Queue detectors (TraCI)──────────┐
+│ if queue empty ≥2 s and green ≥2 s│───Yes──▶ Immediate phase change
+└─────────────────────────┬─────────┘
+                          No
+                    ┌──Mamdani FIS──┐
+                    │ green-time Δ  │
+                    └───────────────┘
+```
+
+*A full TikZ diagram lives in
+`docs/figures/gap_fuzzy_block.tikz`.*
+
+---
+
+## How to Cite
 
 ```bibtex
 @article{perez2025adaptive,
-  title   = {Adaptive Traffic-Light Control to Optimize Urban Traffic Flow: A Case Study in the City of Cuenca, Ecuador},
-  author  = {Pérez Vargas, Juan Pablo and Zhangallimbay Coraizaca, Jorge Geovanny},
-  journal = {Applied Simulation in Transportation},
+  title   = {  },
+  author  = {Pérez Vargas, Juan Pablo and Zhangallimbay Coraizaca, Jorge Geovanny},
+  journal = {},
   year    = {2025},
-  url     = {https://github.com/<you>/<repo-name>}
+  url     = {https://github.com/juanpablo-perez/cuenca-flow-optimizer}
 }
 ```
 
@@ -114,4 +138,6 @@ If you use this work, please cite:
 
 ## License
 
-[MIT License](LICENSE) © 2025 Juan Pablo Pérez Vargas & Jorge Geovanny Zhangallimbay Coraizaca
+[MIT](LICENSE) © 2025 Juan Pablo Pérez Vargas &  
+Jorge Geovanny Zhangallimbay Coraizaca
+
