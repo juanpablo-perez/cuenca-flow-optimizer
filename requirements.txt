@@ -1,0 +1,16 @@
+# Core scientific stack
+numpy>=1.23,<3.0
+pandas>=2.0,<3.0
+scipy>=1.10,<2.0
+matplotlib>=3.7,<4.0
+networkx>=3.2,<4.0
+
+# Fuzzy control
+scikit-fuzzy>=0.4.2
+
+# YAML config
+PyYAML>=6.0
+
+# SUMO Python APIs
+traci>=1.18.0
+sumolib>=1.18.0

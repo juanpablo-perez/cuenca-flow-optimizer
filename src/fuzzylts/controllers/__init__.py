@@ -1,56 +1,82 @@
 # src/fuzzylts/controllers/__init__.py
-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 controllers package initializer
 ───────────────────────────────
-Lazy factory for traffic-light controllers.  
-Calling `get_controller("fuzzy")` returns the `get_phase_duration` function
-from the `fuzzylts.controllers.fuzzy` module without importing other controllers.
+Lazy factory for traffic-light controllers.
+
+`get_controller("<name>")` lazily imports and returns the **controller module**
+(e.g., `fuzzylts.controllers.fuzzy`). That module is expected to expose
+a callable named **`get_phase_duration(tls_id: str) -> int`** which the
+simulation runner will invoke to obtain the green-phase duration.
+
+Design
+------
+- Avoid importing all controllers up-front; only the requested one is imported.
+- Cache imported modules for subsequent calls.
 """
 
 from __future__ import annotations
-from importlib import import_module
-from typing import Callable, Protocol, Dict
 
-class Controller(Protocol):
-    """Signature for a traffic-light controller function."""
-    def __call__(self, tls_id: str) -> int: ...
+from importlib import import_module
+from typing import Callable, Dict, Protocol
+
+
+class ControllerModule(Protocol):
+    """Protocol for a controller module.
+
+    Every controller module must expose:
+
+        get_phase_duration(tls_id: str) -> int
+
+    Where:
+        tls_id: Traffic light system identifier from the SUMO network.
+        returns: Duration (seconds) for the next green phase at `tls_id`.
+    """
+
+    def get_phase_duration(self, tls_id: str) -> int:  # pragma: no cover - protocol signature
+        ...
+
 
 # Map controller names to their module paths
 _CONTROLLER_MODULES: Dict[str, str] = {
-    "static":   "fuzzylts.controllers.static",
+    "static": "fuzzylts.controllers.static",
     "actuated": "fuzzylts.controllers.actuated",
-    "fuzzy":    "fuzzylts.controllers.fuzzy",
+    "fuzzy": "fuzzylts.controllers.fuzzy",
     "gap_fuzzy": "fuzzylts.controllers.gap_fuzzy",
 }
 
-# Cache for imported controller functions
-_controller_cache: Dict[str, Controller] = {}
+# Cache for imported controller modules
+_controller_cache: Dict[str, ControllerModule] = {}
 
-def get_controller(name: str) -> Controller:
-    """
-    Retrieve the `get_phase_duration` function for the specified controller.
-    
-    Imports the controller module on first use and caches the function.
-    
+
+def get_controller(name: str) -> ControllerModule:
+    """Retrieve the controller module for the specified `name`.
+
+    This function imports the module on first use and caches it for subsequent calls.
+
     Args:
-        name: Identifier of the controller ("static", "actuated", or "fuzzy").
-    
+        name: Controller identifier (e.g., "static", "actuated", "fuzzy", "gap_fuzzy").
+
     Returns:
-        A callable that takes a traffic-light ID and returns the green-phase duration.
-    
+        The controller **module** implementing `get_phase_duration(tls_id: str) -> int`.
+
     Raises:
-        ValueError: If the controller name is not recognized.
+        ValueError: If `name` is not a recognized controller.
     """
     if name in _controller_cache:
         return _controller_cache[name]
 
     try:
         module_path = _CONTROLLER_MODULES[name]
-    except KeyError:
-        raise ValueError(f"Unknown controller '{name}'. Valid options are: {list(_CONTROLLER_MODULES)}")
+    except KeyError as exc:
+        valid = ", ".join(sorted(_CONTROLLER_MODULES.keys()))
+        raise ValueError(f"Unknown controller '{name}'. Valid options are: {valid}") from exc
 
-    module = import_module(module_path)
-    controller_fn = getattr(module, "get_phase_duration")
-    _controller_cache[name] = controller_fn
-    return controller_fn
+    module = import_module(module_path)  # type: ignore[assignment]
+    _controller_cache[name] = module  # type: ignore[assignment]
+    return module
+
+
+__all__ = ["get_controller", "ControllerModule"]

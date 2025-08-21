@@ -1,43 +1,28 @@
-# configs/controller/fuzzy.yaml
-sumo_cfg: osm_fuzzy.sumocfg
+# ---------------------------------------------------------------------------
+# actuated.yaml — Actuated traffic signal timing (2025)
+# ---------------------------------------------------------------------------
+# Purpose
+#   Tunables for the actuated controller.
+#   The controller enforces a minimum green, allows dynamic extensions up to a
+#   maximum green based on detector gaps, and uses a fixed yellow interval.
+#
+# Units
+#   All durations are expressed in seconds.
+#
+# Invariants
+#   - green_min > 0
+#   - green_max > 0
+#   - yellow_fix > 0
+#   - green_min < green_max
+#   - green_min <= green_duration <= green_max
+#
+# Notes
+#   - green_duration: nominal/initial green budget before any extension logic.
+#   - Extensions (gap-out) may increase the active green but never beyond green_max.
+#   - The change interval between phases is fixed by yellow_fix.
+# ---------------------------------------------------------------------------
 
-semaforos:
-  - "2496228891"
-  - "cluster_12013799525_12013799526_2496228894"
-  - "cluster_12013799527_12013799528_2190601967"
-  - "cluster_12013799529_12013799530_473195061"
-
-fases_lanes:
-  "2496228891":
-    0:
-      - "337277951#3_0"
-      - "337277951#3_1"
-      - "337277951#1_0"
-      # ...
-    2:
-      - "567060342#1_0"
-      - "567060342#0_0"
-  "cluster_12013799525_12013799526_2496228894":
-    0: [ "42143912#5_0", "42143912#3_0", "42143912#4_0" ]
-    2: [ "337277973#1_0", "337277973#1_1", ... ]
-
-funciones:
-  llegada:
-    lmin: 0.0
-    lmax: 1.0
-    niveles: [ "muy lenta", "lenta", "media", "moderada", "alta" ]
-  vehiculos:
-    lmin: 0
-    lmax: 30
-    niveles: [ "muy pocos", "pocos", "normal", "moderados", "muchos" ]
-  verde:
-    lmin: 15
-    lmax: 50
-    niveles: [ "muy corto", "corto", "normal", "alto", "muy alto" ]
-
-reglas:
-  - [ "muy pocos",   "muy lenta",  "muy corto" ]
-  - [ "muy pocos",   "lenta",      "muy corto" ]
-  # …
-  - [ "muchos",      "moderada",   "alto" ]
-  - [ "muchos",      "alta",       "alto" ]
+green_duration: 42.0  # seconds; nominal green before extensions
+green_min: 15.0       # seconds; enforced minimum green service time
+green_max: 50.0       # seconds; hard cap for any extension
+yellow_fix: 3.0       # seconds; fixed yellow (amber) between phases

@@ -1,156 +1,79 @@
+# ---------------------------------------------------------------------------
+# fuzzy.yaml — Fuzzy controller knowledge base (2025)
+# ---------------------------------------------------------------------------
+# Purpose
+#   Knowledge base for the fuzzy traffic signal controller.
+#   It defines linguistic variables (with their linguistic levels and ranges)
+#   and the rule base mapping inputs → output.
+#
+# Conventions
+#   - All names are lowercase with underscores.
+#   - 'functions' declares the fuzzy variables:
+#       * 'arrival'  : input — normalized arrival-rate (0.0–1.0)
+#       * 'vehicles' : input — queue length (vehicles)
+#       * 'green'    : output — green duration (seconds)
+#   - lmin/lmax specify the variable universe (crisp range before fuzzification).
+#   - Rule format (triplet): [vehicles_level, arrival_level, green_level]
+#     i.e., IF vehicles IS <x> AND arrival IS <y> THEN green IS <z>.
+# ---------------------------------------------------------------------------
+
 functions:
   arrival:
-    levels:
-    - very_slow
-    - slow
-    - medium
-    - moderate
-    - fast
-    lmax: 1.0
+    # Input — normalized arrival rate (0.0–1.0). Unitless.
+    levels: [very_slow, slow, medium, moderate, fast]
     lmin: 0.0
+    lmax: 1.0
+
   green:
-    levels:
-    - very_short
-    - short
-    - normal
-    - long
-    - very_long
-    lmax: 36    # 40 | 36
-    lmin: 15    # 15 | 15
+    # Output — green time (seconds). Defuzzified result will be within [lmin, lmax].
+    levels: [very_short, short, normal, long, very_long]
+    lmin: 15
+    lmax: 36
+
   vehicles:
-    levels:
-    - very_few
-    - few
-    - normal
-    - many
-    - very_many
-    lmax: 13    # 20 | 16 | 13
-    lmin: 3     # 0  | 3  | 3
-phase_lanes:
-  '2496228891':
-    0:
-    - 337277951#3_0
-    - 337277951#3_1
-    - 337277951#1_0
-    - 337277951#4_0
-    - 337277951#4_1
-    - 337277951#2_0
-    - 337277951#2_1
-    - '49217102_0'
-    2:
-    - 567060342#1_0
-    - 567060342#0_0
-  cluster_12013799525_12013799526_2496228894:
-    0:
-    - 42143912#5_0
-    - 42143912#3_0
-    - 42143912#4_0
-    2:
-    - 337277973#1_0
-    - 337277973#1_1
-    - 337277973#0_0
-    - 337277973#0_1
-    - 567060342#1_0
-    - 567060342#0_0
-  cluster_12013799527_12013799528_2190601967:
-    0:
-    - 40668087#1_0
-    2:
-    - 337277981#1_1
-    - 337277981#1_0
-    - 337277981#2_1
-    - 337277981#2_0
-    - 42143912#5_0
-    - 42143912#3_0
-    - 42143912#4_0
-  cluster_12013799529_12013799530_473195061:
-    0:
-    - '49217102_0'
-    2:
-    - 337277970#1_0
-    - 337277970#1_1
-    - 40668087#1_0
+    # Input — queue length (vehicles) at detection zone.
+    levels: [very_few, few, normal, many, very_many]
+    lmin: 3
+    lmax: 13
+
+# ---------------------------------------------------------------------------
+# Rule base
+#   Triplets in the form:
+#     - [vehicles_level, arrival_level, green_level]
+#   Grouped by 'vehicles' to improve readability.
+# ---------------------------------------------------------------------------
 rules:
-- - very_few
-  - very_slow
-  - very_short
-- - very_few
-  - slow
-  - very_short
-- - very_few
-  - medium
-  - very_short
-- - very_few
-  - moderate
-  - short
-- - very_few
-  - fast
-  - short
-- - few
-  - very_slow
-  - very_short
-- - few
-  - slow
-  - short
-- - few
-  - medium
-  - short
-- - few
-  - moderate
-  - normal
-- - few
-  - fast
-  - normal
-- - normal
-  - very_slow
-  - short
-- - normal
-  - slow
-  - short
-- - normal
-  - medium
-  - normal
-- - normal
-  - moderate
-  - long
-- - normal
-  - fast
-  - long
-- - many
-  - very_slow
-  - normal
-- - many
-  - slow
-  - normal
-- - many
-  - medium
-  - long
-- - many
-  - moderate
-  - long
-- - many
-  - fast
-  - very_long
-- - very_many
-  - very_slow
-  - long
-- - very_many
-  - slow
-  - long
-- - very_many
-  - medium
-  - very_long
-- - very_many
-  - moderate
-  - very_long
-- - very_many
-  - fast
-  - very_long
-sumo_cfg: osm_fuzzy.sumocfg
-tls:
-- '2496228891'
-- cluster_12013799525_12013799526_2496228894
-- cluster_12013799527_12013799528_2190601967
-- cluster_12013799529_12013799530_473195061
+  # --- vehicles: very_few ---------------------------------------------------
+  - [very_few, very_slow, very_short]
+  - [very_few, slow,      very_short]
+  - [very_few, medium,    very_short]
+  - [very_few, moderate,  short]
+  - [very_few, fast,      short]
 
+  # --- vehicles: few --------------------------------------------------------
+  - [few,      very_slow, very_short]
+  - [few,      slow,      short]
+  - [few,      medium,    short]
+  - [few,      moderate,  normal]
+  - [few,      fast,      normal]
 
+  # --- vehicles: normal -----------------------------------------------------
+  - [normal,   very_slow, short]
+  - [normal,   slow,      short]
+  - [normal,   medium,    normal]
+  - [normal,   moderate,  long]
+  - [normal,   fast,      long]
+
+  # --- vehicles: many -------------------------------------------------------
+  - [many,     very_slow, normal]
+  - [many,     slow,      normal]
+  - [many,     medium,    long]
+  - [many,     moderate,  long]
+  - [many,     fast,      very_long]
+
+  # --- vehicles: very_many --------------------------------------------------
+  - [very_many, very_slow, long]
+  - [very_many, slow,      long]
+  - [very_many, medium,    very_long]
+  - [very_many, moderate,  very_long]
+  - [very_many, fast,      very_long]
