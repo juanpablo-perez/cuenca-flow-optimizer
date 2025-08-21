@@ -1,243 +1,412 @@
+# src/fuzzylts/utils/stats.py
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-stats.py – Utilities to parse SUMO tripinfo.xml and emissions.xml files,
-cache results as CSV, aggregate experiment metrics, and load all data across
-controllers and scenarios.
+stats.py — Parse and aggregate SUMO tripinfo.xml and emissions.xml across runs,
+with CSV caching and ready-to-plot summaries (emissions vs. time).
+
+Requirements
+------------
+- pandas, numpy, scipy (for the simple CI helper)
+
+Expected runs layout
+--------------------
+experiments/<controller>_<scenario>_<seed>/
+    ├─ tripinfo.xml          (optional)
+    └─ emissions.xml[.gz]    (recommended SUMO period = 900 s for 15-min bins)
+
+Outputs
+-------
+data/experiment_metrics.csv
+data/tripinfo.csv
+data/emissions_<pollutants>.csv   # wide by timestep: time, CO2, NOx, ...
+
+Notes
+-----
+- The logic here is intentionally minimal/tolerant to support different SUMO
+  versions and run layouts. CSVs are cached for reproducible plotting.
 """
-from pathlib import Path
-from typing import Any, Dict, List, Tuple
+
+from __future__ import annotations
+
+import gzip
+import json
+import logging
 import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
-import pandas as pd
 import numpy as np
-from scipy.stats import t
+import pandas as pd
+from scipy.stats import t  # used in ci()
 
-# Default confidence level for intervals (e.g. 95%)
-CONFIDENCE = 0.95
+# ─────────────────────────────────────────────────────────────────────────────
+# Configuration
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Directories
-EXP_DIR = Path("experiments")
-DATA_DIR = Path().resolve() / "data"
-DATA_DIR.mkdir(exist_ok=True)
+CONFIDENCE: float = 0.95
+
+EXP_DIR: Path = Path("experiments")
+DATA_DIR: Path = Path("data").resolve()
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Typical SUMO emissions set: ("CO2", "NOx", "PMx", "CO", "HC", "fuel")
+POLLUTANTS_DEFAULT: Tuple[str, ...] = ("CO2",)
+
+logger = logging.getLogger(__name__)
 
 
-def load_experiment_metrics(exp_dir: Path = EXP_DIR) -> pd.DataFrame:
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _open_maybe_gzip(path: Path):
+    """Open a file that may be gzip-compressed.
+
+    Returns:
+        A binary file-like object.
     """
-    Load or cache aggregated metrics from metrics.json files in `exp_dir`.
-    Returns a DataFrame with one row per run including all metrics and parsed
-    controller, scenario, seed fields.
+    name = path.name.lower()
+    return gzip.open(path, "rb") if (name.endswith(".gz") or name.endswith(".gzip")) else open(path, "rb")
+
+
+def _canonicalize_pollutants(pollutants: Iterable[str]) -> Tuple[str, ...]:
+    """Normalize a pollutants iterable: trim, de-duplicate (stable), ensure non-empty."""
+    seen: set[str] = set()
+    ordered: List[str] = []
+    for p in pollutants:
+        s = str(p).strip()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        ordered.append(s)
+    if not ordered:
+        raise ValueError("Pollutant list must not be empty.")
+    return tuple(ordered)
+
+
+def _emissions_target_path(base_dir: Path, pollutants: Sequence[str]) -> Path:
+    """Deterministic cache filename for a pollutant set (alphabetical suffix)."""
+    suffix = "_".join(sorted({p.strip() for p in pollutants if p.strip()}))
+    return base_dir / f"emissions_{suffix}.csv"
+
+
+def _parse_run_folder_name(run_name: str) -> Tuple[str, str, str]:
+    """Extract `(controller, scenario, seed)` from '<controller>_<scenario>_<seed>'.
+
+    Special rules preserved:
+      - 'gap' → 'gap_fuzzy' controller.
+      - scenario heuristics for 'medium_extended' and 'very_high'.
+
+    Args:
+        run_name: Folder name e.g. 'static_low_01'.
+
+    Returns:
+        Tuple(controller, scenario, seed) as strings.
     """
-    target = DATA_DIR / 'experiment_metrics.csv'
-    if target.exists():
-        return pd.read_csv(target)
+    parts = run_name.split("_")
+    controller = "gap_fuzzy" if (parts and parts[0] == "gap") else (parts[0] if parts else "unknown")
+    seed = parts[-1] if parts else "0"
 
-    records: List[Dict[str, Any]] = []
-    for run_dir in exp_dir.iterdir():
-        if not run_dir.is_dir():
-            continue
-        metrics_file = run_dir / "metrics.json"
-        if not metrics_file.exists():
-            continue
-        rec = pd.read_json(metrics_file, typ="series").to_dict()
-        parts = run_dir.name.split("_")
-        rec['controller'] = 'gap_fuzzy' if parts[0] == 'gap' else parts[0]
-        scen = parts[-3]
-        rec['scenario'] = ('medium_extended' if scen == 'medium'
-                           else ('very_high' if scen == 'very' else parts[-2]))
-        try:
-            rec['seed'] = int(parts[-1])
-        except ValueError:
-            rec['seed'] = parts[-1]
-        records.append(rec)
+    # Scenario heuristics preserved from original logic
+    if len(parts) >= 3 and parts[-3] == "medium":
+        scenario = "medium_extended"
+    elif len(parts) >= 3 and parts[-3] == "very":
+        scenario = "very_high"
+    else:
+        scenario = parts[-2] if len(parts) >= 2 else "unknown"
 
-    df = pd.DataFrame(records)
-    df.to_csv(target, index=False)
-    return df
+    return controller, scenario, seed
 
 
 def ci(series: pd.Series, confidence: float = CONFIDENCE) -> Tuple[float, float]:
-    """
-    Compute two-sided confidence interval for a pandas Series.
-    Returns (lower_bound, upper_bound). If insufficient data, returns (mean, mean).
+    """Two-sided Student confidence interval (mean ± CI).
+
+    If n < 2, returns (mean, mean).
+
+    Args:
+        series: Values for which to compute the interval.
+        confidence: Confidence level (default 0.95).
+
+    Returns:
+        (low, high) bounds.
     """
     n = series.count()
     m = series.mean()
     if n < 2:
         return m, m
     sem = series.sem()
-    h = sem * t.ppf((1 + confidence) / 2, df=n - 1)
-    return m - h, m + h
+    half = sem * t.ppf((1 + confidence) / 2, df=n - 1)
+    return m - half, m + half
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Experiment metrics (metrics.json)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_experiment_metrics(exp_dir: Path | str = EXP_DIR, force_reload: bool = False) -> pd.DataFrame:
+    """Read/cache `metrics.json` from each run dir → `data/experiment_metrics.csv`.
+
+    Returns:
+        DataFrame with the original keys plus columns: ['controller', 'scenario', 'seed'].
+    """
+    exp_dir = Path(exp_dir)
+    target = DATA_DIR / "experiment_metrics.csv"
+    if target.exists() and not force_reload:
+        return pd.read_csv(target, low_memory=False)
+
+    rows: List[Dict[str, Any]] = []
+    for run_dir in exp_dir.iterdir():
+        if not run_dir.is_dir():
+            continue
+        f = run_dir / "metrics.json"
+        if not f.exists():
+            continue
+        try:
+            with f.open("r", encoding="utf-8") as fh:
+                rec: Dict[str, Any] = json.load(fh)
+        except Exception as exc:
+            logger.warning("Failed to read %s: %s", f, exc)
+            continue
+
+        controller, scenario, seed = _parse_run_folder_name(run_dir.name)
+        rec.update({"controller": controller, "scenario": scenario, "seed": seed})
+        rows.append(rec)
+
+    df = pd.DataFrame(rows)
+    df.to_csv(target, index=False)
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tripinfo
+# ─────────────────────────────────────────────────────────────────────────────
 
 def parse_tripinfo(xml_path: Path) -> pd.DataFrame:
+    """Parse `tripinfo.xml` → DataFrame with columns ['arrival', 'waitingTime'] per trip.
+
+    Implementation details:
+      - Uses `ElementTree.iterparse` for low memory overhead.
+      - Accepts both 'waitingTime' and 'waiting_time' attribute variants.
+
+    Args:
+        xml_path: Path to the `tripinfo.xml` file.
+
+    Returns:
+        DataFrame with columns ['arrival', 'waitingTime'] (float32).
     """
-    Parse a single tripinfo.xml and return DataFrame with ['time','waitingTime'] per trip.
-    """
-    records: List[Dict[str, float]] = []
-    for _, elem in ET.iterparse(xml_path, events=("end",)):
-        if elem.tag == 'tripinfo':
-            time_arr = float(elem.attrib.get('arrival', elem.attrib.get('arriveTime', 0)))
-            wait_t = float(elem.attrib.get('waitingTime', elem.attrib.get('waiting_time', 0)))
-            records.append({'time': time_arr, 'waitingTime': wait_t})
+    out: List[Dict[str, float]] = []
+    with xml_path.open("rb") as fh:
+        for _, elem in ET.iterparse(fh, events=("end",)):
+            if elem.tag != "tripinfo":
+                continue
+            a = elem.attrib
+            arrival = float(a.get("arrival", a.get("arriveTime", "0") or 0))
+            waiting = float(a.get("waitingTime", a.get("waiting_time", "0") or 0))
+            out.append({"arrival": arrival, "waitingTime": waiting})
             elem.clear()
-    return pd.DataFrame.from_records(records)
+
+    df = pd.DataFrame.from_records(out)
+    if not df.empty:
+        df["arrival"] = pd.to_numeric(df["arrival"], errors="coerce").astype("float32")
+        df["waitingTime"] = pd.to_numeric(df["waitingTime"], errors="coerce").astype("float32")
+    return df
 
 
-def load_tripinfo(controller: str,
-                  scenario: str,
-                  exp_dir: Path = EXP_DIR,
-                  force_reload: bool = False) -> pd.DataFrame:
+def load_all_tripinfo(exp_dir: Path | str = EXP_DIR, force_reload: bool = False) -> pd.DataFrame:
+    """Aggregate all runs' `tripinfo.xml` into `data/tripinfo.csv`.
+
+    Output schema:
+        ['controller', 'scenario', 'run', 'arrival', 'waitingTime']
+
+    Notes:
+        - `run` is an integer index derived from enumeration order.
     """
-    Load or cache tripinfo data for a controller/scenario.
-    Returns a DataFrame with columns ['time','waitingTime','run'].
-    """
-    csv_path = DATA_DIR / f"tripinfo_{controller}_{scenario}.csv"
-    if csv_path.exists() and not force_reload:
-        return pd.read_csv(csv_path)
-
-    dfs: List[pd.DataFrame] = []
-    for run_idx, run_dir in enumerate(exp_dir.glob(f"{controller}_{scenario}_*")):
-        xml_file = run_dir / 'tripinfo.xml'
-        if not xml_file.exists():
-            continue
-        df = parse_tripinfo(xml_file)
-        df['run'] = run_idx
-        dfs.append(df)
-
-    result = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
-    result.to_csv(csv_path, index=False)
-    return result
-
-
-def parse_emissions(xml_path: Path, pollutant: str) -> pd.DataFrame:
-    """
-    Parse a single emissions.xml and return DataFrame with ['time', pollutant] per timestep.
-    """
-    records: List[Dict[str, float]] = []
-    for _, elem in ET.iterparse(xml_path, events=("end",)):
-        if elem.tag == 'timestep':
-            t_sec = float(elem.attrib.get('time', 0))
-            total = sum(float(v.attrib.get(pollutant, 0)) for v in elem.iterfind('vehicle'))
-            records.append({'time': t_sec, pollutant: total})
-            elem.clear()
-    return pd.DataFrame.from_records(records)
-
-
-def load_emissions(controller: str,
-                   scenario: str,
-                   pollutant: str = 'CO2',
-                   exp_dir: Path = EXP_DIR,
-                   force_reload: bool = False) -> pd.DataFrame:
-    """
-    Load or cache emissions data for a controller/scenario and pollutant.
-    Returns DataFrame with ['time', pollutant, 'run'].
-    """
-    csv_path = DATA_DIR / f"emissions_{pollutant.lower()}_{controller}_{scenario}.csv"
-    if csv_path.exists() and not force_reload:
-        return pd.read_csv(csv_path)
-
-    dfs: List[pd.DataFrame] = []
-    for run_idx, run_dir in enumerate(exp_dir.glob(f"{controller}_{scenario}_*")):
-        xml_file = run_dir / 'emissions.xml'
-        if not xml_file.exists():
-            continue
-        df = parse_emissions(xml_file, pollutant)
-        df['run'] = run_idx
-        dfs.append(df)
-
-    result = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
-    result.to_csv(csv_path, index=False)
-    return result
-
-
-def load_all_tripinfo(force_reload: bool = False) -> pd.DataFrame:
-    """
-    Load **all** tripinfo.xml runs under `experiments/`.  
-    Returns a DataFrame with columns:
-      ['controller','scenario','run','arrival','waitingTime']  
-    Caches in data/all_tripinfo.csv (unless force_reload=True).
-    """
+    exp_dir = Path(exp_dir)
     target = DATA_DIR / "tripinfo.csv"
     if target.exists() and not force_reload:
-        return pd.read_csv(target)
+        return pd.read_csv(target, low_memory=False)
 
-    records: List[pd.DataFrame] = []
-    for run_idx, run in enumerate(Path("experiments").glob("*_*_*")):
-        xml_file = run / "tripinfo.xml"
+    frames: List[pd.DataFrame] = []
+    for idx, run_dir in enumerate(sorted(p for p in exp_dir.iterdir() if p.is_dir())):
+        xml_file = run_dir / "tripinfo.xml"
         if not xml_file.exists():
             continue
+        try:
+            df = parse_tripinfo(xml_file)
+        except Exception as exc:
+            logger.warning("Failed to parse %s: %s", xml_file, exc)
+            continue
+        if df.empty:
+            continue
 
-        # parse with pandas
-        df = pd.read_xml(xml_file, xpath="//tripinfo")
-        if "waitingTime" not in df:
-            df = df.rename(columns={"waiting_time": "waitingTime"})
-        df = df[["arrival", "waitingTime"]].copy()
-
-        # extract controller/scenario from folder name
-        parts = run.name.split("_")
-        controller = parts[0] if parts[0] != "gap" else "gap_fuzzy"
-        scen = parts[-3]
-        df['scenario'] = ('medium_extended' if scen == 'medium'
-                           else ('very_high' if scen == 'very' else parts[-2]))
+        controller, scenario, _seed = _parse_run_folder_name(run_dir.name)
         df["controller"] = controller
-        df["run"]        = run_idx
+        df["scenario"] = scenario
+        df["run"] = idx
+        frames.append(df)
 
-        records.append(df)
+    full = (
+        pd.concat(frames, ignore_index=True)
+        if frames
+        else pd.DataFrame(columns=["controller", "scenario", "run", "arrival", "waitingTime"])
+    )
 
-    if not records:
-        full = pd.DataFrame(columns=["controller","scenario","run","arrival","waitingTime"])
-    else:
-        full = pd.concat(records, ignore_index=True)
+    # Dtypes
+    if not full.empty:
+        full["controller"] = full["controller"].astype("category")
+        full["scenario"] = full["scenario"].astype("category")
+        full["run"] = pd.to_numeric(full["run"], errors="coerce").astype("int32")
 
     full.to_csv(target, index=False)
     return full
 
 
-def load_all_emissions(pollutant: str = 'CO2',
-                       exp_dir: Path = EXP_DIR,
-                       force_reload: bool = False) -> pd.DataFrame:
-    """
-    Load or cache all emissions data across controllers and scenarios for a pollutant.
-    Returns DataFrame with ['time', pollutant, 'controller','scenario','run_id'].
-    """
-    csv_path = DATA_DIR / f"emissions_{pollutant.lower()}.csv"
-    if csv_path.exists() and not force_reload:
-        return pd.read_csv(csv_path)
+# ─────────────────────────────────────────────────────────────────────────────
+# Emissions (wide per timestep: time, <pollutants...>)
+# ─────────────────────────────────────────────────────────────────────────────
 
-    records: List[pd.DataFrame] = []
-    for run_dir in exp_dir.iterdir():
-        xml_file = run_dir / 'emissions.xml'
+def parse_emissions(xml_path: Path, pollutants: Sequence[str]) -> pd.DataFrame:
+    """Parse `emissions.xml` (or `.gz`), summing vehicles per `<timestep>`.
+
+    Returns a wide DataFrame:
+        ['time', *pollutants]
+
+    With SUMO `--device.emissions.period=900`, each 'time' is a 15-minute bin.
+
+    Args:
+        xml_path: Path to emissions file (`.xml` or `.xml.gz`).
+        pollutants: Sequence of pollutant names to extract (e.g., ["CO2"]).
+
+    Returns:
+        DataFrame with float32 columns and one row per timestep.
+    """
+    pols = _canonicalize_pollutants(pollutants)
+
+    # Accumulators: time (s) -> vector[pollutants]
+    acc: Dict[float, np.ndarray] = {}
+
+    with _open_maybe_gzip(xml_path) as fh:
+        context = ET.iterparse(fh, events=("start", "end"))
+        _, root = next(context)  # prime the iterator
+        for event, elem in context:
+            if event == "end" and elem.tag == "timestep":
+                t_s = float(elem.attrib.get("time", "0") or 0)
+                vec = acc.get(t_s)
+                if vec is None:
+                    vec = np.zeros(len(pols), dtype="float64")
+                    acc[t_s] = vec
+
+                # Sum all vehicles' pollutant attributes for this timestep
+                for v in elem:
+                    if v.tag != "vehicle":
+                        continue
+                    a = v.attrib
+                    for i, pol in enumerate(pols):
+                        val = a.get(pol)
+                        if val is not None:
+                            try:
+                                vec[i] += float(val)
+                            except ValueError:
+                                pass
+
+                elem.clear()
+                root.clear()
+
+    if not acc:
+        return pd.DataFrame(columns=["time", *pols])
+
+    times = sorted(acc.keys())
+    data: Dict[str, List[float]] = {"time": times}
+    for i, pol in enumerate(pols):
+        data[pol] = [acc[t][i] for t in times]
+
+    df = pd.DataFrame(data)
+    # Compact dtypes
+    df["time"] = pd.to_numeric(df["time"], errors="coerce").astype("float32")
+    for pol in pols:
+        df[pol] = pd.to_numeric(df[pol], errors="coerce").astype("float32")
+    return df
+
+
+def load_all_emissions(
+    exp_dir: Path | str = EXP_DIR,
+    pollutants: Sequence[str] | None = None,
+    force_reload: bool = False,
+) -> pd.DataFrame:
+    """Walk all runs, parse emissions into a wide per-timestep DF, and append metadata.
+
+    Caches to:
+        data/emissions_<pollutants>.csv
+
+    Output schema:
+        ['time', *pollutants, 'controller', 'scenario', 'run']
+
+    Notes:
+        - `run` is kept as a string to preserve the exact folder token.
+    """
+    exp_dir = Path(exp_dir)
+    pols = _canonicalize_pollutants(pollutants or POLLUTANTS_DEFAULT)
+
+    target = _emissions_target_path(DATA_DIR, pols)
+    if target.exists() and not force_reload:
+        return pd.read_csv(target, low_memory=False)
+
+    frames: List[pd.DataFrame] = []
+    for run_dir in sorted(p for p in exp_dir.iterdir() if p.is_dir()):
+        xml_file = run_dir / "emissions.xml"
         if not xml_file.exists():
+            gz = run_dir / "emissions.xml.gz"
+            if not gz.exists():
+                continue
+            xml_file = gz
+
+        try:
+            df = parse_emissions(xml_file, pollutants=pols)
+        except Exception as exc:
+            logger.warning("Failed to parse %s: %s", xml_file, exc)
             continue
-        parts = run_dir.name.split("_")
-        controller = 'gap_fuzzy' if parts[0] == 'gap' else parts[0]
-        scen = parts[-3]
-        scenario = ('medium_extended' if scen == 'medium'
-                    else ('very_high' if scen == 'very' else parts[-2]))
-        df = parse_emissions(xml_file, pollutant)
-        df['controller'] = controller
-        df['scenario'] = scenario
-        df['run'] = int(run_dir.name.split("_")[-1])
-        records.append(df)
 
-    result = pd.concat(records, ignore_index=True) if records else pd.DataFrame()
-    result.to_csv(csv_path, index=False)
-    return result
+        controller, scenario, seed = _parse_run_folder_name(run_dir.name)
+        df["controller"] = controller
+        df["scenario"] = scenario
+        df["run"] = seed
+        frames.append(df)
+
+    out = (
+        pd.concat(frames, ignore_index=True)
+        if frames
+        else pd.DataFrame(columns=["time", *pols, "controller", "scenario", "run"])
+    )
+
+    # Dtypes
+    if not out.empty:
+        out["controller"] = out["controller"].astype("category")
+        out["scenario"] = out["scenario"].astype("category")
+        out["run"] = out["run"].astype("string[python]")  # preserve token verbatim
+
+    out.to_csv(target, index=False)
+    return out
 
 
-# ----------------------------------------------------------------------------
-# CLI to cache all CSVs at once
-# ----------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI
+# ─────────────────────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
-    print("Caching all metrics data...")
-    df_metrics = load_experiment_metrics()
-    print(f"Saved {DATA_DIR / 'experiment_metrics.csv'} with {len(df_metrics)} records \n")
-    print("Caching all tripinfo data...")
-    df_trip = load_all_tripinfo(force_reload=True)
-    print(f"Saved {DATA_DIR / 'all_tripinfo.csv'} with {len(df_trip)} records \n")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
 
-    pollutants = ['CO2']  # extend list if needed
-    for p in pollutants:
-        print(f"Caching all emissions for pollutant {p}...")
-        df_em = load_all_emissions(p, force_reload=True)
-        print(f"Saved {DATA_DIR / f'all_emissions_{p.lower()}.csv'} with {len(df_em)} records")
+    logger.info("== Caching experiment metrics ...")
+    df_metrics = load_experiment_metrics(force_reload=True)
+    logger.info("Saved %s (%d rows)", DATA_DIR / "experiment_metrics.csv", len(df_metrics))
+
+    logger.info("== Caching all tripinfo ...")
+    df_trip = load_all_tripinfo(force_reload=True)
+    logger.info("Saved %s (%d rows)", DATA_DIR / "tripinfo.csv", len(df_trip))
+
+    logger.info("== Loading all emissions (wide DF by timestep) ...")
+    df_em_all = load_all_emissions(force_reload=True, pollutants=POLLUTANTS_DEFAULT)
+    logger.info("Saved %s (%d rows)", "<data/emissions_*.csv>", len(df_em_all))

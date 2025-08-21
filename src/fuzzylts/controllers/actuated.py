@@ -1,140 +1,276 @@
 # src/fuzzylts/controllers/actuated.py
-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-controllers.actuated – observer mode
-──────────────────────────────────────────
-Does not modify signal durations. Records green phases (0 & 2) to CSV
-`datos_semaforos_actuated.csv` under the experiment run directory.
+Actuated TLS utilities for SUMO/TraCI.
+
+This module provides:
+- A deterministic conversion of fixed TLS phases into "actuated" phases
+  (min/max/next) preserving binary state strings.
+- A safe wrapper to rebuild a network with netconvert using
+  `--tls.rebuild` + `--tls.default-type actuated`.
+- Initialization of TLS logic in a live TraCI session.
+
+Intended for reproducible experiments in scientific codebases.
 """
 
 from __future__ import annotations
-import csv
-import statistics
+
 import os
-import atexit
+import subprocess
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from shutil import which
+from typing import List, Optional
 
 import traci
+import traci.constants as tc
+from traci import trafficlight as tl
 
-from fuzzylts.utils.log import get_logger
+# NOTE: keep the import path as in the original codebase.
+# If your repo defines this in utils instead of config, adjust there (not here).
+from fuzzylts.config.actuated_config import ActuatedConfig  # type: ignore
+from fuzzylts.utils.log import get_logger  # type: ignore
 
-log = get_logger(__name__)
+LOGGER = get_logger(__name__)
 
-# ── Configuration ─────────────────────────────────────────────────────────
-TLS_IDS: List[str] = [
-    "2496228891",
-    "cluster_12013799525_12013799526_2496228894",
-    "cluster_12013799527_12013799528_2190601967",
-    "cluster_12013799529_12013799530_473195061",
-]
+# ─────────────────────────────────────────────────────────────────────────────
+# Constants
+# ─────────────────────────────────────────────────────────────────────────────
 
-PHASE_LANES_MAP: Dict[str, Dict[int, List[str]]] = {
-    "2496228891": {
-        0: [
-            "337277951#3_0", "337277951#3_1", "337277951#1_0",
-            "337277951#1_1", "337277951#4_0", "337277951#4_1",
-            "337277951#2_0", "337277951#2_1", "49217102_0",
-        ],
-        2: ["567060342#1_0", "567060342#0_0"],
-    },
-    "cluster_12013799525_12013799526_2496228894": {
-        0: ["42143912#5_0", "42143912#3_0", "42143912#4_0"],
-        2: [
-            "337277973#1_0", "337277973#1_1", "337277973#0_1",
-            "337277973#0_0", "567060342#1_0", "567060342#0_0",
-        ],
-    },
-    "cluster_12013799527_12013799528_2190601967": {
-        0: ["40668087#1_0"],
-        2: [
-            "337277981#1_1", "337277981#1_0", "337277981#2_1",
-            "337277981#2_0", "42143912#5_0", "42143912#3_0",
-            "42143912#4_0",
-        ],
-    },
-    "cluster_12013799529_12013799530_473195061": {
-        0: ["49217102_0"],
-        2: ["337277970#1_0", "337277970#1_1", "40668087#1_0"],
-    },
-}
+ACTUATED_TYPE: int = tc.TRAFFICLIGHT_TYPE_ACTUATED  # TraCI constant
+NET_ENV_VAR: str = "TARGET_NET_XML"                 # input .net.xml from env
 
-RUN_DIR: Path = Path(os.getenv("FUZZYLTS_RUN_DIR", "."))
-CSV_PATH: Path = RUN_DIR / "datos_semaforos_actuated.csv"
+# ─────────────────────────────────────────────────────────────────────────────
+# Configuration (path injected via env for reproducibility)
+# ─────────────────────────────────────────────────────────────────────────────
 
-# ── Internal state ───────────────────────────────────────────────────────
-_tls_state: Dict[str, Dict[str, int]] = {
-    tls: {"phase": -1, "start_time": 0} for tls in TLS_IDS
-}
-_phase_records: List[Dict] = []
-_min_green: int = float("inf")
-_max_green: int = float("-inf")
+_net_path_env: Optional[str] = os.getenv(NET_ENV_VAR)
+# ActuatedConfig must handle `None` sensibly if no env is provided.
+cfg = ActuatedConfig.load(net_path=_net_path_env)  # type: ignore[arg-type]
 
 
-def _record_phase(
-    tls_id: str, phase: int, duration: int, vehicles: int, start_time: int
-) -> None:
-    """Append a completed green phase to the internal record."""
-    global _min_green, _max_green
-    entry = {
-        "time": traci.simulation.getTime() - duration,
-        "traffic_light_id": tls_id,
-        "phase": phase,
-        "duration": duration,
-        "vehicle_count": vehicles,
-        "start_step": start_time,
-    }
-    _phase_records.append(entry)
-    _min_green = min(_min_green, duration)
-    _max_green = max(_max_green, duration)
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase transformation helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _phase_is_yellow(state: str) -> bool:
+    """Heuristic: treat any 'y' in the state string as a yellow/transition phase."""
+    return "y" in state
 
 
-def get_phase_duration(tls_id: str) -> int:
+def _make_actuated_phases(
+    phases_in: List[tl.Phase],
+    *,
+    green_min: float,
+    green_duration: float,
+    green_max: float,
+    yellow_fix: float,
+) -> List[tl.Phase]:
+    """Convert raw phases into actuated phases, preserving state strings.
+
+    The `next` pointer is wired in ring order (i → i+1 mod N).
+
+    Args:
+        phases_in: Original phases from the base TLS logic.
+        green_min: Minimum green duration (seconds).
+        green_duration: Nominal green duration (seconds).
+        green_max: Maximum green duration (seconds).
+        yellow_fix: Fixed yellow (amber) duration (seconds).
+
+    Returns:
+        A list of `tl.Phase` configured as actuated (min/max/next).
     """
-    Observer for SUMO-actuated mode. Always returns 0 (no modification).
-    Records elapsed green-phase durations (phases 0 and 2).
-    """
-    current_step = int(traci.simulation.getCurrentTime() / 1000)
-    phase = traci.trafficlight.getPhase(tls_id)
-    prev = _tls_state[tls_id]
+    out: List[tl.Phase] = []
+    n = len(phases_in)
+    for i, p in enumerate(phases_in):
+        if _phase_is_yellow(p.state):
+            duration = minDur = maxDur = float(yellow_fix)
+        else:
+            duration = float(green_duration)
+            minDur = float(green_min)
+            maxDur = float(green_max)
 
-    # If previous phase was green (0 or 2), record it
-    if prev["phase"] in (0, 2):
-        duration = current_step - prev["start_time"]
-        lanes = PHASE_LANES_MAP[tls_id][prev["phase"]]
-        vehicle_count = sum(
-            traci.lane.getLastStepVehicleNumber(l) for l in lanes
+        next_tuple = ((i + 1) % n,)  # ring next
+        out.append(
+            tl.Phase(
+                duration=duration,
+                state=p.state,
+                minDur=minDur,
+                maxDur=maxDur,
+                next=next_tuple,
+            )
         )
-        _record_phase(tls_id, prev["phase"], duration, vehicle_count, prev["start_time"])
-
-    # Update state for the new phase
-    prev["phase"] = phase
-    prev["start_time"] = current_step
-
-    return 0
+    return out
 
 
-@atexit.register
-def _write_csv() -> None:
-    """Write recorded green-phase data to CSV on program exit."""
-    if not _phase_records:
-        return
+def build_actuated_logic_from(
+    base: tl.Logic,
+    *,
+    green_min: float,
+    green_duration: float,
+    green_max: float,
+    yellow_fix: float,
+) -> tl.Logic:
+    """Build an actuated `tl.Logic` from a base logic, transforming phases only.
 
-    CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with CSV_PATH.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=_phase_records[0].keys())
-        writer.writeheader()
-        writer.writerows(_phase_records)
+    Preserves:
+    - programID
+    - currentPhaseIndex
+    - subParameter
 
-    durations = [r["duration"] for r in _phase_records]
-    mean = statistics.mean(durations)
-    var = statistics.variance(durations) if len(durations) > 1 else 0
-    try:
-        mode = statistics.mode(durations)
-    except statistics.StatisticsError:
-        mode = "No unique"
+    Args:
+        base: Source logic to transform.
+        green_min: Minimum green duration (seconds).
+        green_duration: Nominal green duration (seconds).
+        green_max: Maximum green duration (seconds).
+        yellow_fix: Fixed yellow (amber) duration (seconds).
 
-    log.info(
-        "Actuated-observer summary – min:%ds, max:%ds, mean:%.2fs, mode:%s, var:%.2f",
-        _min_green, _max_green, mean, mode, var
+    Returns:
+        An actuated-type (`ACTUATED_TYPE`) `tl.Logic` with transformed phases.
+    """
+    phases = getattr(base, "phases", [])
+    new_phases = _make_actuated_phases(
+        phases,
+        green_min=green_min,
+        green_duration=green_duration,
+        green_max=green_max,
+        yellow_fix=yellow_fix,
     )
+    return tl.Logic(
+        programID=getattr(base, "programID"),
+        type=ACTUATED_TYPE,
+        currentPhaseIndex=getattr(base, "currentPhaseIndex", 0),
+        phases=new_phases,
+        subParameter=getattr(base, "subParameter", {}),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Live TraCI initialization
+# ─────────────────────────────────────────────────────────────────────────────
+
+def initialize_tls() -> None:
+    """Replace current TLS programs with an actuated variant for all IDs in `cfg.tls`.
+
+    Requires:
+        - An active TraCI connection.
+        - TLS IDs in `cfg.tls` must exist in the network.
+    """
+    for tls_id in cfg.tls:
+        current_prog = tl.getProgram(tls_id)
+        logics = tl.getAllProgramLogics(tls_id)
+        base = next((L for L in logics if getattr(L, "programID", None) == current_prog), logics[0])
+
+        new_logic = build_actuated_logic_from(
+            base,
+            green_min=cfg.green_min,
+            green_max=cfg.green_max,
+            green_duration=cfg.green_duration,
+            yellow_fix=cfg.yellow_fix,
+        )
+        tl.setProgramLogic(tls_id, new_logic)
+        LOGGER.debug("TLS %s switched to actuated program '%s'", tls_id, new_logic.programID)
+
+    LOGGER.info("Initialized %d TLS in actuated mode (type=%d).", len(cfg.tls), ACTUATED_TYPE)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public API example
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_phase_duration(tls_id: str) -> float:
+    """Return the configured duration (seconds) of the current phase for `tls_id`."""
+    return float(tl.getPhaseDuration(tls_id))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Network preprocessing (netconvert)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class NetworkBuildError(RuntimeError):
+    """Raised when `netconvert` fails to rebuild the network."""
+
+
+def _resolve_netconvert() -> str:
+    """Find a usable `netconvert` executable or raise `NetworkBuildError`."""
+    exe = which("netconvert")
+    if exe:
+        return exe
+    # Optionally fall back to $SUMO_HOME/bin/netconvert
+    candidate = Path(os.environ.get("SUMO_HOME", "")) / "bin" / "netconvert"
+    if candidate.exists():
+        return str(candidate)
+    raise NetworkBuildError("netconvert not found in PATH or $SUMO_HOME/bin")
+
+
+def preprocess_network(path: Path, *, out_name: str | None = None, force: bool = False) -> Path:
+    """Rebuild TLS programs as 'actuated' and write a new `.net.xml`.
+
+    Parameters
+    ----------
+    path : Path
+        Input network (`.net.xml` or `.net.xml.gz`) file.
+    out_name : str | None
+        Optional output file name. Defaults to `<stem>.actuated.net.xml`.
+    force : bool
+        Overwrite existing output file if True.
+
+    Returns
+    -------
+    Path
+        The output `.net.xml` path.
+
+    Notes
+    -----
+    Requires `netconvert` with support for:
+        --tls.rebuild
+        --tls.default-type actuated
+    """
+    if not path.exists():
+        raise FileNotFoundError(path)
+
+    output = (path.parent / (out_name or f"{path.stem}.actuated.net.xml")).resolve()
+    if output.exists() and not force:
+        LOGGER.info("Using existing network: %s", output)
+        return output
+
+    netconvert = _resolve_netconvert()
+    cmd = [
+        netconvert,
+        "-s",
+        str(path),
+        "--tls.rebuild",
+        "true",
+        "--tls.default-type",
+        "actuated",
+        "-o",
+        str(output),
+    ]
+
+    LOGGER.info("Running netconvert to rebuild TLS as actuated.")
+    LOGGER.debug("Command: %s", " ".join(cmd))
+
+    try:
+        proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        if proc.stdout:
+            LOGGER.debug("netconvert stdout:\n%s", proc.stdout)
+        if proc.stderr:
+            # netconvert is chatty on stderr even on success; keep as debug
+            LOGGER.debug("netconvert stderr:\n%s", proc.stderr)
+    except subprocess.CalledProcessError as e:
+        msg = f"netconvert failed (code {e.returncode}). Stderr:\n{e.stderr}"
+        LOGGER.error(msg)
+        raise NetworkBuildError(msg) from e
+
+    LOGGER.info("Wrote actuated network: %s", output)
+    return output
+
+
+__all__ = [
+    "initialize_tls",
+    "get_phase_duration",
+    "build_actuated_logic_from",
+    "preprocess_network",
+    "NetworkBuildError",
+]
