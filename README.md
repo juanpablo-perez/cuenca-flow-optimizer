@@ -61,7 +61,7 @@ cuenca-flow-optimizer/
 │   ├── plot_waiting_time_bar.py
 │   └── plot_waiting_time_over_time.py
 ├── scripts/
-│   └── run_all.py            # convenience sweep (scenarios × seeds × controllers)
+│   └── sweep_experiments.py  # convenience sweep (scenarios × seeds × controllers)
 ├── src/fuzzylts/
 │   ├── controllers/
 │   │   ├── static.py         # fixed-time controller & netconvert wrapper
