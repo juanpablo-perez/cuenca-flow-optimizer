@@ -162,17 +162,37 @@ Generated PDFs appear in `plots/`. The plotting scripts adopt an IEEE‑friendly
 ---
 
 ## 📝 Citation
-If you use this code or data, please cite the paper and the repository:
 
-<!-- ```bibtex
-@inproceedings{gap-fuzzy-2025,
-  title        = {Gap--Fuzzy Adaptive Signal Control: Enhancing Urban Traffic Efficiency},
-  author       = {Juan Pérez, Jorge Zhangallimbay, Pablo Barbecho Bautista},
-  booktitle    = {...},
-  year         = {2025},
+If you use this code or data, **please cite both the paper and the repository**.
+
+### Paper
+Juan Pérez, Jorge Zhangallimbay, and Pablo Barbecho Bautista.  
+**“Gap–Fuzzy Adaptive Signal Control: Enhancing Urban Traffic Efficiency.”**  
+*(camera-ready, IEEE PE–WASUN, 2025).*  
+DOI: _to be assigned by the publisher_.
+
+### Software / Repository
+[![DOI](https://zenodo.org/badge/1006344720.svg)](https://doi.org/10.5281/zenodo.16924088)  
+**Version DOI (camera-ready):** https://doi.org/10.5281/zenodo.16924088  
+**Concept DOI (all versions):** https://doi.org/10.5281/zenodo.16924089
+
+**Repository:** https://github.com/juanpablo-perez/gap-fuzzy-atsc
+
+#### BibTeX
+```bibtex
+@software{Perez2025_GapFuzzy_ATSC,
+  author    = {Juan P{\'e}rez and Jorge Zhangallimbay and Pablo Barbecho Bautista},
+  title     = {Gap--Fuzzy Adaptive Signal Control: Enhancing Urban Traffic Efficiency (Code and Artifacts)},
+  year      = {2025},
+  version   = {v1.0.0},
+  doi       = {10.5281/zenodo.16924088},
+  url       = {https://github.com/juanpablo-perez/gap-fuzzy-atsc},
+  publisher = {Zenodo},
+  note      = {Camera-ready release}
 }
 ```
-> A DOI for the repository (e.g., via Zenodo) can be added post‑publication. -->
+
+In LaTeX, cite the repository as: `\cite{Perez2025_GapFuzzy_ATSC}`.
 
 ---
 

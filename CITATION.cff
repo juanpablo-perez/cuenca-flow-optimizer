@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Gap–Fuzzy Adaptive Signal Control: Enhancing Urban Traffic Efficiency (Code and Artifacts)"
+authors:
+  - family-names: "Pérez Vargas"
+    given-names: "Juan"
+  - family-names: "Zhangallimbay"
+    given-names: "Jorge"
+  - family-names: "Barbecho Bautista"
+    given-names: "Pablo"
+year: 2025
+version: "v1.1.0"
+doi: "10.5281/zenodo.16924088"  # Version DOI (camera-ready)
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.16924089"
+    description: "Concept DOI (all versions)"
+  - type: url
+    value: "https://github.com/juanpablo-perez/gap-fuzzy-atsc"
+repository-code: "https://github.com/juanpablo-perez/gap-fuzzy-atsc"
+url: "https://doi.org/10.5281/zenodo.16924088"
+license: "MIT"
+keywords:
+  - SUMO
+  - TRaCI
+  - Adaptive Traffic Signal Control
+  - Fuzzy Logic
+  - Emissions
+  - Urban Mobility
