@@ -9,7 +9,7 @@ authors:
   - family-names: "Barbecho Bautista"
     given-names: "Pablo"
 year: 2025
-version: "v1.1.0"
+version: "v1.0.1"
 doi: "10.5281/zenodo.16924088"  # Version DOI (camera-ready)
 identifiers:
   - type: doi
