@@ -55,7 +55,7 @@ from plotters.ieee_style import (  # type: ignore
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Preferred order; missing items are skipped gracefully
-SCENARIOS: List[str] = ["low", "medium", "high", "very_high", "medium_extended"]
+SCENARIOS: List[str] = ["low", "medium", "high", "very_high"]
 CONTROLLERS: List[str] = ["static", "actuated", "gap_fuzzy"]
 
 EMISSIONS_CSV_FALLBACK: Path = Path("data/emissions_CO2.csv")
@@ -265,7 +265,8 @@ def plot_emissions_bar(
                 f"{h:,.2f}",  # kg with two decimals and thousands separator
                 ha="center",
                 va="bottom",
-                fontsize=7,
+                rotation=55,
+                fontsize=11,
             )
 
     ax.set_xticks(x)
@@ -275,7 +276,7 @@ def plot_emissions_bar(
     ax.legend(
         title="Controller",
         loc="upper center",
-        bbox_to_anchor=(0.5, 1.20),
+        bbox_to_anchor=(0.5, 1.28),
         ncol=min(3, n_ctrl),
         frameon=False,
     )
