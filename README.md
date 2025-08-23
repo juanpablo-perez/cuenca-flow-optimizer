@@ -4,7 +4,6 @@
 This repository contains the code, data-processing pipeline, and plotting scripts that accompany the paper:
 
 > **Gap–Fuzzy Adaptive Signal Control: Enhancing Urban Traffic Efficiency**  
-<!--> Camera-ready version included in `/paper/` (or see the PDF attached to the repository release).-->
 
 The project evaluates a hybrid controller that (i) uses a Mamdani-type fuzzy system to propose green durations from queue length and arrival rate, and (ii) overlays a lightweight **gap‑out** mechanism to terminate green when no vehicles are detected after a short minimum time. We benchmark against a **Fixed-Time (Static)** baseline and SUMO’s **Loop‑Actuated** controller on a **city‑scale SUMO network of Cuenca, Ecuador**.
 
