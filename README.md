@@ -54,7 +54,7 @@ export PYTHONPATH=$PWD/src  # Windows PowerShell: $env:PYTHONPATH="$PWD/src"
 ├── plotters/                  # Plot style (IEEE) and utilities
 ├── plots/                     # Generated figures (PDF)
 ├── scripts/
-│   └── run_all.py             # 150-run batch: 3 controllers × 5 scenarios × 10 seeds
+│   └── sweep_experiments.py   # 150-run batch: 3 controllers × 5 scenarios × 10 seeds
 ├── src/
 │   └── fuzzylts/
 │       ├── controllers/       # static, actuated, fuzzy, gap_fuzzy
