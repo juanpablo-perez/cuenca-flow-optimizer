@@ -73,7 +73,7 @@ export PYTHONPATH=$PWD/src  # Windows PowerShell: $env:PYTHONPATH="$PWD/src"
 - **Static**: fixed timings per local ordinance (e.g., green 42 s, amber 3 s) applied as constant phase durations.
 - **Actuated**: SUMO’s loop‑actuated program with practical bounds (e.g., min green 15 s).
 - **Fuzzy**: Mamdani inference with five membership levels per variable; outputs are capped **15–36 s** (upper bound found via simulated‑annealing tuning).
-- **Gap–Fuzzy**: Fuzzy + **gap‑out**; if the lane group is empty for \(T_\text{gap}=2\) s after \(T_\text{min}=2\) s of green, advance the phase.
+- **Gap–Fuzzy**: Fuzzy + **gap‑out**; if the lane group is empty for T_gap=2s after T_min=2s of green, advance the phase.
 
 Inputs (**queue length**, **arrival rate**) are computed over an **upstream corridor**: mapped lanes plus straight‑through connections up to two street changes (two links), ignoring internal edges and merging contiguous OSM splits along the same street base.
 
@@ -81,10 +81,11 @@ Inputs (**queue length**, **arrival rate**) are computed over an **upstream corr
 
 ## 🗺️ Scenarios & Demand
 Scenarios are parameterized by target \(\phi = v/c\). The route generator derives the insertion rate
-\(
-q_\text{target} = \phi \cdot n_\text{in} \cdot C_\ell
-\)
-(veh/h), where \(n_\text{in}\) is the effective inbound lane count and \(C_\ell\) an effective per‑lane capacity.
+
+q_target = \phi * n_in * C_ell  (veh/h)
+
+,where n_in is the effective inbound lane count and C_ell an effective per‑lane capacity.
+
 
 Typical defaults (code):  
 Low 0.165, Medium 0.325, High 0.620, Very‑High 0.780. See the paper for the Medium‑Extended time‑of‑day profile used in temporal plots.
@@ -154,7 +155,7 @@ Generated PDFs appear in `plots/`. The plotting scripts adopt an IEEE‑friendly
 ## 🔁 Reproducibility Notes
 - SUMO step length: **1.0 s**; emissions period: **900 s**.
 - Fuzzy output clamped to **15–36 s** (36 s selected via simulated‑annealing for best delay trade‑off).
-- Gap‑out thresholds: \(T_\text{min}=2\) s, \(T_\text{gap}=2\) s.
+- Gap‑out thresholds: T_min=2s, T_gap=2s.
 - Batch experiments use **10 seeds** per scenario.
 - The `experiments/` directory is intentionally **git‑ignored** due to size.
 
@@ -165,7 +166,7 @@ Generated PDFs appear in `plots/`. The plotting scripts adopt an IEEE‑friendly
 If you use this code or data, **please cite both the paper and the repository**.
 
 ### Paper
-Juan Pérez, Jorge Zhangallimbay, and Pablo Barbecho Bautista.  
+Juan Pérez, Jorge Zhangallimbay, Alberto Bazán-Guillén, Pablo Barbecho Bautista, and Mónica Aguilar-Igartua.  
 **“Gap–Fuzzy Adaptive Signal Control: Enhancing Urban Traffic Efficiency.”**  
 *(camera-ready, IEEE PE–WASUN, 2025).*  
 DOI: _to be assigned by the publisher_.
@@ -173,14 +174,14 @@ DOI: _to be assigned by the publisher_.
 ### Software / Repository
 [![DOI](https://zenodo.org/badge/1006344720.svg)](https://doi.org/10.5281/zenodo.16924088)  
 **Version DOI (camera-ready):** https://doi.org/10.5281/zenodo.16924088  
-**Concept DOI (all versions):** https://doi.org/10.5281/zenodo.16924089
+**Concept DOI (all versions):** https://doi.org/10.5281/zenodo.16924089  
 
-**Repository:** https://github.com/juanpablo-perez/gap-fuzzy-atsc
+**Repository:** https://github.com/juanpablo-perez/gap-fuzzy-atsc  
 
 #### BibTeX
 ```bibtex
 @software{Perez2025_GapFuzzy_ATSC,
-  author    = {Juan P{\'e}rez and Jorge Zhangallimbay and Pablo Barbecho Bautista},
+  author    = {Juan P{\'e}rez and Jorge Zhangallimbay and Alberto Baz{\'a}n-Guill{\'e}n and Pablo Barbecho Bautista and M{\'o}nica Aguilar-Igartua},
   title     = {Gap--Fuzzy Adaptive Signal Control: Enhancing Urban Traffic Efficiency (Code and Artifacts)},
   year      = {2025},
   version   = {v1.0.0},
@@ -191,7 +192,8 @@ DOI: _to be assigned by the publisher_.
 }
 ```
 
-In LaTeX, cite the repository as: `\cite{Perez2025_GapFuzzy_ATSC}`.
+In LaTeX, cite the repository as:  
+`\cite{Perez2025_GapFuzzy_ATSC}`  
 
 ---
 
