@@ -166,7 +166,7 @@ Generated PDFs appear in `plots/`. The plotting scripts adopt an IEEE‑friendly
 If you use this code or data, **please cite both the paper and the repository**.
 
 ### Paper
-Juan Pérez, Jorge Zhangallimbay, Alberto Bazán-Guillén, Pablo Barbecho Bautista, and Mónica Aguilar-Igartua.  
+Juan Pérez Vargas, Jorge Zhangallimbay Coraizaca, Alberto Bazán-Guillén, Pablo Barbecho Bautista, and Mónica Aguilar-Igartua.  
 **“Gap–Fuzzy Adaptive Signal Control: Enhancing Urban Traffic Efficiency.”**  
 *(camera-ready, IEEE PE–WASUN, 2025).*  
 DOI: _to be assigned by the publisher_.
@@ -181,7 +181,7 @@ DOI: _to be assigned by the publisher_.
 #### BibTeX
 ```bibtex
 @software{Perez2025_GapFuzzy_ATSC,
-  author    = {Juan P{\'e}rez and Jorge Zhangallimbay and Alberto Baz{\'a}n-Guill{\'e}n and Pablo Barbecho Bautista and M{\'o}nica Aguilar-Igartua},
+  author    = {Juan P{\'e}rez Vargas and Jorge Zhangallimbay Coraizaca and Alberto Baz{\'a}n-Guill{\'e}n and Pablo Barbecho Bautista and M{\'o}nica Aguilar-Igartua},
   title     = {Gap--Fuzzy Adaptive Signal Control: Enhancing Urban Traffic Efficiency (Code and Artifacts)},
   year      = {2025},
   version   = {v1.0.0},
