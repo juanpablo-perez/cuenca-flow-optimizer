@@ -4,10 +4,15 @@ title: "Gap–Fuzzy Adaptive Signal Control: Enhancing Urban Traffic Efficiency 
 authors:
   - family-names: "Pérez Vargas"
     given-names: "Juan"
+    orcid: "https://orcid.org/0009-0009-6334-3282"
   - family-names: "Zhangallimbay"
     given-names: "Jorge"
+  - family-names: "Bazán-Guillén"
+    given-names: "Alberto"
   - family-names: "Barbecho Bautista"
     given-names: "Pablo"
+  - family-names: "Aguilar-Igartua"
+    given-names: "Mónica"
 year: 2025
 version: "v1.0.1"
 doi: "10.5281/zenodo.16924088"  # Version DOI (camera-ready)
@@ -21,9 +26,11 @@ repository-code: "https://github.com/juanpablo-perez/gap-fuzzy-atsc"
 url: "https://doi.org/10.5281/zenodo.16924088"
 license: "MIT"
 keywords:
-  - SUMO
-  - TRaCI
-  - Adaptive Traffic Signal Control
-  - Fuzzy Logic
-  - Emissions
-  - Urban Mobility
+  - "Intelligent Traffic Control Systems (ITCS)"
+  - "Fuzzy Logic"
+  - "Gap-out Inference"
+  - "SUMO"
+  - "TRaCI"
+  - "Adaptive Traffic Signal Control"
+  - "Urban Mobility"
+  - "Python"
